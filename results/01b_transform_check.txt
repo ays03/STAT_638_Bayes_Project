@@ -1,0 +1,93 @@
+RESPONSE-SCALE COMPARISON (OLS, intercept + trend + 2 harmonics + day-of-week)
+   scale      R2  resid skew  resid kurt  BP het. p    rho1
+     kwh   0.452       0.059        5.00     0.0000   0.368
+    sqrt   0.445      -0.699        4.57     0.0239   0.469
+     log   0.410      -1.450        6.18     0.0000   0.583
+
+  Interpretation: the log scale should show the flattest variance-vs-mean
+  relationship (largest BP p-value). Gaussian kurtosis is 3; values well
+  above 3 motivate a t likelihood.
+
+HARMONIC ORDER, OLS on the log scale
+  J  params      R2   adj R2  resid sd        BIC
+  0       8   0.030    0.025     0.437    -2286.8
+  1      10   0.357    0.353     0.356    -2855.7
+  2      12   0.410    0.405     0.341    -2962.0
+  3      14   0.441    0.435     0.332    -3023.0
+  4      16   0.467    0.461     0.324    -3077.0
+
+  Note: these OLS criteria ignore the strong residual autocorrelation and so
+  overstate the evidence for extra harmonics. They are exploratory only; the
+  formal comparison in step 3 uses WAIC and held-out forecast scores.
+
+RESIDUAL AUTOCORRELATION, log scale, J = 2
+  lag  1  +0.582
+  lag  2  +0.455
+  lag  3  +0.432
+  lag  4  +0.408
+  lag  5  +0.331
+  lag  6  +0.307
+  lag  7  +0.273
+  lag 14  +0.105
+  lag 21  +0.009
+
+  Geometric decay consistent with AR(1); an AR(1) with rho1 as fitted predicts:
+  lag  2  +0.338 (AR(1) prediction) vs +0.455 (observed)
+  lag  3  +0.197 (AR(1) prediction) vs +0.432 (observed)
+  lag  7  +0.023 (AR(1) prediction) vs +0.273 (observed)
+
+LEFT-TAIL DAYS ON THE LOG SCALE (standardised OLS residual < -2.5)
+  2007-02-24  kwh= 11.92  z=-2.85
+  2007-02-25  kwh=  8.36  z=-3.83
+  2007-02-26  kwh=  9.47  z=-2.96
+  2007-02-27  kwh=  8.64  z=-3.41
+  2007-02-28  kwh=  8.68  z=-3.43
+  2007-03-01  kwh=  8.63  z=-3.15
+  2007-03-02  kwh=  8.59  z=-3.36
+  2007-04-12  kwh=  8.96  z=-2.90
+  2007-04-13  kwh=  9.18  z=-3.03
+  2007-04-14  kwh=  9.24  z=-3.42
+  2007-04-15  kwh= 12.10  z=-2.57
+  2007-06-23  kwh=  7.96  z=-2.74
+  2007-07-29  kwh=  5.35  z=-3.28
+  2007-08-18  kwh=  5.80  z=-3.14
+  2007-10-28  kwh=  8.54  z=-3.81
+  2007-10-29  kwh=  9.09  z=-3.15
+  2007-11-01  kwh=  8.27  z=-3.44
+  2007-11-03  kwh=  8.21  z=-4.13
+  2008-02-25  kwh=  8.41  z=-3.33
+  2008-02-26  kwh=  8.45  z=-3.49
+  2008-02-27  kwh=  9.45  z=-3.19
+  2008-02-28  kwh=  8.49  z=-3.21
+  2008-05-01  kwh=  9.60  z=-2.56
+  2008-08-06  kwh=  5.44  z=-2.95
+  2008-08-07  kwh=  5.58  z=-2.58
+  2008-08-08  kwh=  5.04  z=-3.09
+  2008-08-09  kwh=  5.98  z=-3.01
+  2008-08-10  kwh=  5.87  z=-3.01
+  2008-08-12  kwh=  4.82  z=-3.29
+  2008-08-13  kwh=  4.71  z=-3.40
+  2008-08-14  kwh=  4.50  z=-3.24
+  2008-08-15  kwh=  4.56  z=-3.42
+  2008-08-16  kwh=  4.58  z=-3.83
+  2008-08-17  kwh=  4.58  z=-3.79
+  2008-08-18  kwh=  4.56  z=-3.31
+  2008-08-19  kwh=  4.58  z=-3.49
+  2008-08-20  kwh=  4.47  z=-3.61
+  2008-08-21  kwh=  4.35  z=-3.41
+  2008-08-22  kwh=  4.45  z=-3.56
+  2008-08-23  kwh=  4.24  z=-4.14
+  2008-08-24  kwh=  4.25  z=-4.10
+  2008-08-25  kwh=  4.17  z=-3.66
+  2008-08-26  kwh=  4.29  z=-3.78
+  2008-08-27  kwh=  4.30  z=-3.83
+  2008-08-28  kwh=  4.47  z=-3.44
+  2008-08-29  kwh=  4.46  z=-3.67
+  2008-08-30  kwh=  4.51  z=-4.08
+  2008-10-26  kwh=  8.72  z=-3.73
+  2008-10-27  kwh=  8.73  z=-3.26
+  2008-11-01  kwh= 13.84  z=-2.59
+  2008-12-29  kwh=  9.25  z=-3.62
+  2010-02-28  kwh= 11.86  z=-2.82
+  2010-03-06  kwh= 13.25  z=-2.52
+  2010-11-21  kwh= 15.02  z=-2.69

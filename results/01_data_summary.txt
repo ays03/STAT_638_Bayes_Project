@@ -1,0 +1,55 @@
+RAW FILE
+  rows                         2,075,259
+  missing Global_active_power  25,979 (1.252%)
+  first / last timestamped day 2006-12-16 / 2010-11-26  (both dropped as partial)
+
+DAILY SERIES
+  calendar days on grid        1440
+  days with coverage >= 0.95   1417
+  days treated as missing      23
+  of which zero observed mins  9
+  sub-meter > total violations 0  (expect 0)
+
+DAILY kWh (observed days only)
+  n        1417
+  mean     26.19
+  sd       10.00
+  min      4.17  on 2008-08-25
+  q25      19.66
+  median   25.94
+  q75      31.67
+  max      79.56  on 2006-12-23
+  skewness 0.56   (log scale: -1.17)
+
+ANNUALISED CONSUMPTION  (mean daily kWh x 365, by calendar year)
+  2006  n=  15  mean=45.12 kWh/day  -> 16,467 kWh/yr
+  2007  n= 361  mean=26.84 kWh/day  -> 9,796 kWh/yr
+  2008  n= 366  mean=25.72 kWh/day  -> 9,389 kWh/yr
+  2009  n= 361  mean=25.90 kWh/day  -> 9,452 kWh/yr
+  2010  n= 314  mean=25.44 kWh/day  -> 9,284 kWh/yr
+
+MEAN DAILY kWh BY DAY OF WEEK  (0=Mon)
+  0  n= 203  mean=24.02
+  1  n= 203  mean=25.66
+  2  n= 204  mean=25.97
+  3  n= 203  mean=23.53
+  4  n= 204  mean=25.03
+  5  n= 200  mean=29.92
+  6  n= 200  mean=29.33
+
+MEAN DAILY kWh BY MONTH
+   1  n= 121  mean=35.07
+   2  n= 113  mean=31.20
+   3  n= 122  mean=29.55
+   4  n= 117  mean=25.16
+   5  n= 124  mean=24.71
+   6  n= 117  mean=21.83
+   7  n= 123  mean=16.81
+   8  n= 117  mean=13.67
+   9  n= 116  mean=23.41
+  10  n= 124  mean=27.28
+  11  n= 115  mean=31.02
+  12  n= 108  mean=35.64
+
+LAG-1 AUTOCORRELATION OF log(kwh) AFTER REMOVING MONTH + DOW MEANS
+  rho1 = 0.527  (consecutive observed days)
