@@ -1,0 +1,34 @@
+AR ORDER SELECTION FOR THE ERROR PROCESS
+Residuals from OLS on log kWh with intercept + trend + 2 harmonics + day-of-week.
+
+ALL OBSERVED DAYS   (n = 1417 days)
+  p  n_eff  sigma_eta        AIC        BIC  coefficients
+  0   1417     0.3411    -3046.1    -3040.9  
+  1   1408     0.2776    -3604.7    -3594.2  +0.583
+  2   1399     0.2734    -3622.3    -3606.5  +0.484  +0.173
+  3   1390     0.2699    -3633.2    -3612.3  +0.453  +0.090  +0.173
+  4   1381     0.2688    -3618.4    -3592.3  +0.434  +0.079  +0.122  +0.113
+  5   1372     0.2683    -3598.5    -3567.2  +0.437  +0.079  +0.125  +0.117  -0.011
+    AR(2): stationary=True, implied rho1=0.585, marginal sd=0.342
+    ratio marginal sd / one-step sd = 1.25  (how much wider a long-horizon interval is than a one-day-ahead one)
+
+SUSTAINED LOW-USE BLOCKS (>=5 consecutive days under 12 kWh): 57 days
+  2007-02-24 to 2007-03-02  ( 7 days, mean  9.18 kWh)
+  2008-08-06 to 2008-08-30  (25 days, mean  4.76 kWh)
+  2009-08-01 to 2009-08-08  ( 8 days, mean  9.01 kWh)
+  2010-07-29 to 2010-08-14  (17 days, mean  9.09 kWh)
+
+EXCLUDING SUSTAINED LOW-USE BLOCKS   (n = 1360 days)
+  p  n_eff  sigma_eta        AIC        BIC  coefficients
+  0   1360     0.2796    -3464.3    -3459.1  
+  1   1347     0.2579    -3646.4    -3635.9  +0.380
+  2   1334     0.2567    -3622.2    -3606.6  +0.347  +0.100
+  3   1322     0.2548    -3606.8    -3586.0  +0.330  +0.060  +0.132
+  4   1310     0.2540    -3580.6    -3554.7  +0.318  +0.054  +0.092  +0.103
+  5   1299     0.2535    -3553.3    -3522.3  +0.324  +0.051  +0.094  +0.111  -0.007
+    AR(2): stationary=True, implied rho1=0.385, marginal sd=0.280
+    ratio marginal sd / one-step sd = 1.09  (how much wider a long-horizon interval is than a one-day-ahead one)
+
+  If the preferred order drops sharply once the absence blocks are removed, the
+  long memory is largely a regime effect and a heavy-tailed AR(2) is the right
+  compromise: AR(2) for genuine weather persistence, t errors for the blocks.

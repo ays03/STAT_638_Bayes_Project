@@ -47,3 +47,36 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# ===========================================================================
+# Python analysis pipeline (added with the Bayesian daily-demand analysis)
+# ===========================================================================
+
+# Raw data: 147 MB, and household_power_consumption.txt alone is 127 MB, which
+# exceeds GitHub's hard 100 MB per-file limit. Recreate it with:
+#     python3 src/00_download.py
+data/
+
+# Posterior draws from the full-data fits: 1.8 GB across seven .npz files,
+# each ~270 MB because the pointwise log-likelihood array is
+# (4 chains x 6000 draws x 1399 days). Regenerate with:
+#     python3 src/03_fit_models.py      (about 6 minutes)
+# The text summaries derived from them are tracked, in results/.
+results/03_fits/
+
+# Matplotlib config cache created by the analysis scripts
+.mplcache/
+
+# LaTeX build intermediates
+*.aux
+*.out
+*.toc
+*.synctex.gz
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store

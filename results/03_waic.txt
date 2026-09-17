@@ -1,0 +1,27 @@
+WAIC MODEL COMPARISON
+All log-likelihoods are densities of daily kWh on 1399 shared days
+(log-scale models carry the log-Jacobian), so all rows are comparable.
+elpd_waic: higher is better. d_elpd is relative to the best model;
+se_diff is the standard error of that paired difference.
+
+  id                specification  elpd_waic   p_waic    d_elpd  se_diff    Rhat     ESS
+  M5            J=2, AR(2)+t, log    -4594.0     18.1       0.0      0.0  1.0025    1125
+  M4            J=3, AR(1)+t, log    -4613.2     19.4     -19.2     11.3  1.0028     846
+  M3            J=2, AR(1)+t, log    -4622.3     17.2     -28.4     10.6  1.0023     964
+  M2            J=1, AR(1)+t, log    -4636.2     15.3     -42.3     11.9  1.0110     399
+  M7            J=2, AR(1)+t, kWh    -4656.8     16.0     -62.9     20.7  1.0069    1072
+  M6     J=2, AR(1)+Gaussian, log    -4657.6     16.0     -63.7     15.4  1.0001   17908
+  M1       J=1, iid Gaussian, log    -5006.8     12.6    -412.9     41.0  1.0003   22875
+
+TARGETED COMPARISONS (each isolates one modelling decision)
+  AR(1) + t errors vs iid Gaussian             M2 - M1 =   +370.6 +/-  36.3   supported
+  second harmonic (J=2 vs J=1)                 M3 - M2 =    +13.9 +/-   5.7   supported
+  third harmonic (J=3 vs J=2)                  M4 - M3 =     +9.1 +/-   4.5   supported
+  AR(2) vs AR(1)                               M5 - M3 =    +28.4 +/-  10.6   supported
+  t errors vs Gaussian, given AR(1)            M3 - M6 =    +35.3 +/-  11.9   supported
+  log scale vs kWh scale                       M3 - M7 =    +34.5 +/-  17.7   inconclusive
+
+  'supported' means the elpd difference exceeds two standard errors.
+  WAIC on a conditional (one-step-ahead) factorisation understates how much
+  a term matters for long-horizon forecasts, so step 4 re-tests each of
+  these decisions on genuinely held-out data.

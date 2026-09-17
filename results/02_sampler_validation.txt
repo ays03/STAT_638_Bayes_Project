@@ -1,0 +1,27 @@
+SAMPLER VALIDATION ON SIMULATED DATA
+True values are known by construction; 95% intervals should cover them.
+
+       parameter    truth  post mean     2.5%    97.5%  cover   Rhat     ESS
+       intercept    3.200      3.236    3.192    3.281    yes  1.000    7505
+  trend_per_year   -0.040     -0.048   -0.072   -0.024    yes  1.000    7392
+          sin_h1    0.050      0.043    0.006    0.081    yes  1.000    7864
+          cos_h1    0.420      0.396    0.358    0.434    yes  1.000    8008
+          sin_h2    0.020     -0.003   -0.041    0.034    yes  1.000    7712
+          cos_h2   -0.110     -0.093   -0.131   -0.056    yes  1.000    7607
+         dow_Tue    0.060      0.014   -0.033    0.059     NO  1.000    7553
+         dow_Wed    0.070      0.031   -0.024    0.085    yes  1.001    8048
+         dow_Thu   -0.050     -0.088   -0.146   -0.030    yes  1.000    8109
+         dow_Fri    0.030      0.007   -0.051    0.065    yes  1.000    7908
+         dow_Sat    0.180      0.192    0.137    0.247    yes  1.000    7651
+         dow_Sun    0.170      0.138    0.091    0.184    yes  1.000    7215
+           sigma    0.240      0.247    0.232    0.262    yes  1.005     627
+           phi_1    0.450      0.449    0.406    0.492    yes  1.000    3888
+              nu    5.000      5.634    4.328    7.295    yes  1.014     317
+
+coverage of 95% intervals: 14/15 parameters
+  (with ~15 parameters, 14 or 15 of 15 is the expected outcome)
+worst Rhat = 1.0137 (target < 1.01),  min bulk ESS = 317 (target > 400)
+
+MISSING-DAY IMPUTATION
+  11 imputed days; posterior sd of imputed log kWh ranges 0.270 to 0.341
+  (should be near the marginal error sd, larger for days inside long gaps)
