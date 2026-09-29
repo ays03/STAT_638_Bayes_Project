@@ -1,0 +1,44 @@
+---
+title: "Bayesian Forecasting of Household Electricity Demand"
+author: "Aysegul Buber"
+date: "2026-09-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Scientific Question and Data
+
+## 1.1 Project Specifications 
+
+### 1.1.1 The Brief 
+
+### 1.1.2 Scientific Questions and the Model 
+
+### 1.1.3 Why Is This a Bayesian Problem
+
+## 1.2 The Data 
+
+### 1.2.1 Provenance and Physical Form 
+
+### 1.2.2 Four Traps That Silently Corrupt the Pipeline
+
+### 1.2.3 Data Transformation  
+The dataset provides `Global_active_power` (GAP), defined as the household global minute-averaged active power in kilowatt (kW). The main objective is framed around daily energy consumption, so a transformation of this variable is essential. **Power (kW)** represents instantaneous rate of delivering energy and total **energy (kWh)** consumption over a time interval is obtained by summing discrete power values multiplied by the duration of each sampling interval (cite a source!!!).  
+
+I this dataset, each GAP value represents one minute of average power, and $ 1\text{ minute} = (1/60) \text{ hour}$. Thus, energy consumption during minute $m$ is
+$$
+E_m = GAP_m* \dfrac{1}{60} \text{ (kWh)}.
+$$
+To obtain the daily average energy consumption, these minute-level energy values are summed across all minutes in a day:
+$$
+\begin{align}
+Y_d &= \sum_{m \in d} E_m \\[6pt]
+&= \sum_{m \in d} \left( \text{GAP}_m \times \frac{1}{60} \right) \\[6pt]
+&= \frac{1}{60} \sum_{m \in d} \text{GAP}_m
+\end{align}
+$$
+$Y_d$ denotes the daily household energy consumption (kWh) and serves as the primary response variable for all subsequent analyses.
+
