@@ -77,6 +77,6 @@ After accounting for seasonality and day-of-week effects, residuals remain stron
 There are several implications for our final Bayesian model, including but not limited to: 
 1) Systematic mean structure: daily consumption varies with long-term time, annual seasonality, and day of the week.
 2) Response scale: the original kWh scale is preferable to the square-root and logarithmic transformations with respect to residual symmetry, although heteroscedasticity remains to be investigated
-3_ Heavy tails: residual kurtosis is larger than the Gaussian benchmark, motivating consideration of a Student-(t) likelihood
+3) Heavy tails: residual kurtosis is larger than the Gaussian benchmark, motivating consideration of a Student-(t) likelihood
 4) Temporal dependence: residuals are not independent, and the appropriate dependence structure remains an empirical question to be resolved through comparison of candidate models.
 5) Sustained unusual periods: some long stretches of low consumption may represent changes in household operating state rather than isolated random outliers, which may limit the ability of a simple autoregressive error model to describe or forecast these periods
