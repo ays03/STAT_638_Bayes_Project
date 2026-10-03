@@ -160,8 +160,10 @@ semicolon-delimited, roughly 127\,MB uncompressed, with nine columns:
 \end{center}
 
 The three sub-meters deliberately do not sum to the total; the remainder
-(lighting, electronics, heating) is the bulk of consumption and is used here
-only as a validation check.
+(lighting, electronics, heating) is the bulk of consumption. The inequality
+against the whole-house total is the parsing check. The split itself is used
+in the exploratory analysis, because it shows which end uses produce the
+annual cycle.
 
 \subsection{Four traps that silently corrupt the pipeline}
 
@@ -227,7 +229,10 @@ Sub-meter validation failures & $0$ & Median & $25.94\kwh$ \\
 Annualised consumption is stable and plausible for a French home with an
 electric water heater: $9{,}796$ (2007), $9{,}389$ (2008), $9{,}452$ (2009),
 and $9{,}284\kwh$/year (2010, partial). Monthly means range from $13.67\kwh$
-in August to $35.64\kwh$ in December.
+in August to $35.64\kwh$ in December. The August figure mixes occupied days
+with long vacancies; that split, and the $23$ discarded days, are taken apart
+below. The discarded days form eight short runs rather than scattered gaps.
+Six of the runs are multi-day, and the longest is 17--22 August 2010.
 
 \begin{figure}[htbp]
 \centering
@@ -238,11 +243,229 @@ bottom panel; the deep summer troughs in the top panel are real absences, not
 missing data.}
 \end{figure}
 
-\section{Exploratory analysis that determined the model}
+\section{Exploratory analysis}
+\label{sec:eda}
 
-Rather than assert a specification, three pre-fits were used to choose one. All
-use ordinary least squares on the same mean structure (intercept, linear trend,
-two harmonics, day-of-week) and examine the residuals.
+The exploratory work has two jobs. The first is descriptive: where daily
+variation actually sits, what physical load produces the annual cycle, and
+whether the weekly pattern is a single shift or something that changes with
+the season. The second chooses the likelihood, and is the response scale and
+the error structure at the end of this section. A shorter account of the
+findings, written for reading rather than for the model derivation, is
+\code{eda\_insights.pdf}. Everything here is ordinary
+least squares or a direct summary. Where a contrast is quoted with an
+interval, the standard error is Newey--West with a Bartlett lag of 14 days,
+because consecutive days are dependent; those intervals are descriptive and
+are not the posteriors reported later. In-sample $R^2$ increments ignore that
+dependence, so they map the variance and are not a model-selection criterion.
+
+\subsection{Where the day-to-day variance sits}
+
+\begin{center}
+\small
+\input{results/tables/eda_variance.tex}
+\end{center}
+
+\noindent
+Each row adds the named terms to the rows above it. The last row is not a
+further step: it replaces the harmonics with month indicators, and is the
+ceiling for a seasonal mean that is constant within each month. Residual SD
+is the standard deviation left over, in kWh/day.
+
+The ordering is unambiguous. A linear trend adds $R^2 = 0.011$. The
+first harmonic adds $0.364$, and that increment is four fifths of the
+$R^2 = 0.452$ reached by the trend, two harmonics and day of week together.
+The second harmonic adds $0.024$ and day of week adds $0.052$. The residual
+standard deviation at that point is $7.40\kwh$, against an unconditional
+$10.00\kwh$. A bit over half of day-to-day variance is still residual after
+the whole systematic part. That is the descriptive version of the wide
+predictive intervals in the results: the calendar is the structure, and a
+typical day still sits several kWh off it.
+
+The third and fourth harmonics, added after day of week, contribute $0.015$
+and $0.011$. Month indicators plus the trend and day of week reach
+$R^2 = 0.470$, which is $0.018$ above two harmonics. Two harmonics already
+carry the season; what they leave on the table is a small lack of fit, not a
+missing component of comparable size. A weekend indicator, after month
+effects, adds $0.046$. Letting the other five weekdays have their own levels
+adds only a further $0.007$. The weekend is the weekly variance. Monday and
+Thursday remain low by about $2$--$3\kwh$ in the weekly table below, and that
+pattern is a small slice of $R^2$.
+
+\subsection{The annual cycle repeats, and August is two regimes}
+
+\begin{center}
+\small
+\input{results/tables/eda_monthly.tex}
+\end{center}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/01d_seasonal.png}
+\caption{Left: a 15-day moving average within each year, the pooled month
+means, and the OLS seasonal curve with one harmonic and with two. The average
+is circular in 2007--2009; 2010 is not wrapped across the missing December.
+The 2008 collapse through August is the vacant stretch, not a second climate.
+Right: the within-month distribution. August's 10th percentile is the vacancy
+floor, and because those days are about two fifths of August the median is
+pulled down with the mean.}
+\end{figure}
+
+Read as a smooth wave, one harmonic peaks on 14 January at $34.8\kwh$ and
+troughs on 16 July at $17.6\kwh$, a range of $17.2\kwh$ and an amplitude of
+$8.6\kwh$. Two harmonics move the crest to 20 December and the trough to
+3 August, and they stretch the range to $19.1\kwh$. The second harmonic's own
+amplitude is $2.2\kwh$. The gain is shape: a deeper, later summer floor and a
+crest that sits in late December rather than a symmetric half-year away from
+mid-July. The year-by-year curves track that shape. Pairwise correlations of
+the twelve monthly means are between $0.89$ and $0.93$, except 2007 against
+2008 at $0.77$, and that exception is August.
+
+The raw August mean of $13.67\kwh$ is the wrong summary of the seasonal floor.
+Of the $117$ retained August days, $47$ fall inside a low-use block. The other
+$70$ average $18.30\kwh$ (median $18.18$). July averages $16.81\kwh$. An occupied
+summer is about $17$--$18\kwh$/day. The
+$13.67$ figure, and the median of $12.93$, sit where they do because the
+vacancies are numerous enough to reach the middle of the August sample: the
+10th percentile is $4.54\kwh$ and the 90th is $22.91$. The two-harmonic trough
+of $16.2\kwh$ falls between the raw August mean and the occupied-August mean.
+The notch to about $5\kwh$ in the 2008 curve is the empty house.
+
+December is the other partial-year trap, in a milder form. The fifteen days of
+December 2006 average $45.1\kwh$; later Decembers average $34.11$. Pooled,
+December is $35.64\kwh$. The record opens at the top of its range --- the
+maximum, $79.56\kwh$ on 23 December 2006, is in that fortnight --- and the
+trend calculation below is sensitive to that.
+
+Official public holidays do not add a further mean structure. Across the $43$
+retained holiday dates, the residual after month and day-of-week means is
+$+0.41\kwh$. Christmas is high in 2006 and 2007 and low in 2008. Late December
+(the 24th through the 31st) runs $2.2\kwh$ above the rest of December, with a
+Newey--West standard error of $2.5$. The dates that look like absences are
+isolated: All Saints' Day in 2007 and 2008, and Assumption 2008, which falls
+inside the vacancy rather than explaining it.
+
+\subsection{The winter peak is unmetered load}
+
+\begin{center}
+\small
+\input{results/tables/eda_enduse.tex}
+\end{center}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/01d_enduse.png}
+\caption{Monthly mean consumption by end use. Sub-meter 3 is the circuit the
+dataset labels as the water heater and air conditioner. It falls from winter
+into summer, which is the water heater's direction.}
+\end{figure}
+
+Just over half of a typical day, $13.41\kwh$ of $26.19$, is on none of the
+three sub-meters. Sub-meter 3, the water heater and air conditioner, is
+$9.30\kwh$ ($35.5\%$). Laundry is $1.87$ and the kitchen $1.61$. The December-minus-August gap of $22.0\kwh$/day, vacancies included on the
+August side, splits $64.6\%$ unmetered, $25.8\%$ sub-meter 3, and about
+$10\%$ kitchen and laundry together. Dropping the vacancy blocks, December
+still sits $17.3\kwh$ above August, and $12.3\kwh$ of that smaller gap is
+unmetered. The annual cycle is heating and hot water. Kitchen and laundry
+move a little and never carry the season.
+
+Sub-meter 3 averages $11.21\kwh$/day in January and $6.16$ in July. An air
+conditioner would rise in summer. In this house the channel falls as the
+weather warms, which is what an electric water heater does when the inlet
+water is warmer and the space-heating load is elsewhere. The ``air
+conditioner'' half of the dataset's label is not visible in the seasonal
+totals.
+
+The vacancy block makes the same split at the other extreme. From 6 to
+30 August 2008 the house averaged $4.76\kwh$/day, which is $0.20\,\mathrm{kW}$
+continuous, against $0.80\,\mathrm{kW}$ in July 2008 and $1.48\,\mathrm{kW}$
+across all Decembers. Of that $4.76$, the remainder is $2.58$, sub-meter 3 is
+$1.73$, laundry is $0.45$, and the kitchen is $0.00$. July 2008 ($19.07\kwh$)
+matches August 2007 ($18.33$), the one August without a long block. Empty
+August is a base load. Occupied August is an ordinary summer month.
+
+\subsection{The week, and the shape of a day}
+
+\begin{center}
+\small
+\input{results/tables/eda_week.tex}
+\end{center}
+
+\noindent
+The first seven rows are deviations from the seven-day mean after month
+indicators. The last four rows are weekend-minus-weekday contrasts within
+season, also after month indicators. Intervals are $1.96$ Newey--West standard
+errors. For the pooled weekend contrast the robust standard error is $0.57$
+against an ordinary-least-squares $0.43$; cutting the lag to 7 days or
+extending it to 21 moves that standard error only between $0.52$ and $0.60$.
+
+Saturday is $+3.69\kwh$ and Sunday $+3.09$. Monday is $-2.19$ and Thursday
+$-2.69$. Tuesday and Wednesday are compatible with the weekly mean; Friday is
+mildly low, at $-1.12$. The pooled weekend premium is $+4.75\kwh$/day. The
+same contrast is $+7.99$ in winter $[+5.24,\ +10.73]$ and $+2.14$ in summer
+$[+0.79,\ +3.48]$. Winter's interval lies entirely above summer's. An additive day-of-week
+term, which is what the later model uses, reports the average of a large
+winter effect and a small summer one.
+
+The end-use split says why. In winter, Saturday averages $40.68\kwh$ and
+Monday $30.54$. Of that $10.1\kwh$ gap, $4.4$ is unmetered, $2.1$ is laundry,
+$1.9$ is the kitchen, and $1.7$ is the water heater. In summer the same
+Saturday-minus-Monday gap is $2.2\kwh$, and the unmetered channel contributes
+$0.3$ of it ($7.77$ against $7.50$). Summer weekends are extra cooking and
+laundry. Winter weekends are those, plus the heating running because someone
+is home. Winter laundry is itself a routine: about $2.9\kwh$ on Wednesday and
+$3.0$--$3.3$ at the weekend, against $0.9$ on Monday and $1.0$ on Thursday.
+That accounts for a large part of Thursday's winter deficit relative to
+Wednesday. The all-year Thursday deficit is spread across the other channels
+as well, and the data stop short of a calendar explanation.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/01d_diurnal.png}
+\caption{Left: mean power by hour. Winter is December--February and summer is
+June--August. Centre and right: weekday profiles split by end use. The
+integral of each curve matches that season's mean daily total to well under
+$0.1\kwh$, so the hourly means have not dropped a part of the day.}
+\end{figure}
+
+The within-day curve is the same fact at a finer scale. A winter weekday
+integrates to $31.7\kwh$ and a winter weekend day to $39.7$; a summer weekday
+integrates to $16.9$ and a summer weekend day to $18.9$. Those differences,
+$8.0$ and $2.0\kwh$, match the regression contrasts. Overnight (01:00--05:00)
+a winter weekday sits at $0.52\,\mathrm{kW}$ and a summer weekday at
+$0.37\,\mathrm{kW}$; a winter weekend night is already $0.77\,\mathrm{kW}$.
+The evening peak (around 20:00 on weekdays, 19:00 at weekends) is
+$2.39\,\mathrm{kW}$ on a winter weekday and $2.95\,\mathrm{kW}$ on a winter
+weekend, against $1.18$ and $1.14\,\mathrm{kW}$ in summer.
+
+At 07:00 on a winter weekday the load is $2.08\,\mathrm{kW}$, of which
+$1.27$ is unmetered and $0.75$ is the water heater. At 07:00 on a winter
+weekend it is only $1.22\,\mathrm{kW}$: the house wakes later. The summer
+weekday spike at 07:00 is $1.07\,\mathrm{kW}$, and $0.61$ of that is the
+water heater rather than the unmetered channel. Heating dominates the winter
+peaks; the water heater dominates what remains of a summer morning. Missing
+minutes are spread evenly across the clock --- between $1.0\%$ and $1.4\%$ of
+rows in every hour --- so this shape is not an hour at which the meter tends
+to drop out.
+
+\subsection{The trend is a few tenths of a kWh per year}
+
+\begin{center}
+\small
+\input{results/tables/eda_trend.tex}
+\end{center}
+
+\noindent
+The slope is the coefficient on $t/365$ in a regression that also contains
+month and day-of-week indicators, so the annual cycle is saturated rather than
+trusted to two harmonics. Every cut has a negative point estimate, between
+$-0.21$ and $-0.51\kwh$/year, and every interval covers zero. Dropping the
+fifteen days of 2006 moves the estimate from $-0.36$ to $-0.21$: that opening
+December is high and it sits at the start of the series, so it steepens a
+downward slope. The sign is negative with or without those fifteen days.
+Four years of one house cannot
+separate a drift of this size from no drift. The posterior interval in the
+results is the inferential version of the same statement.
 
 \subsection{Response scale: the log transform is the wrong default}
 
@@ -305,9 +528,53 @@ and 29 Jul--14 Aug 2010 (17 days, $9.09\kwh$).
 \centering
 \includegraphics[width=0.62\textwidth]{figures/01b_residual_acf.png}
 \caption{Residual autocorrelation after trend, two harmonics, and day-of-week,
-against the geometric decay an AR(1) would produce. The gap at lags 3--10 is
-what the absence blocks contribute.}
+on the log scale, against the geometric decay an AR(1) would produce. The gap
+at lags 3--10 is what the absence blocks contribute.}
 \end{figure}
+
+On the kWh scale the same residuals tell a quieter version of the story, and
+it is the version that matches the scale the holdout later selects. Lag-1
+correlation is $0.37$ rather than $0.58$. An AR(1) with that coefficient has
+marginal standard deviation only $1.075$ times the one-step standard
+deviation: using yesterday's residual tightens a long-horizon band by about
+$7\%$, which is the descriptive form of the saturation the forecasts find.
+Removing the vacancy blocks lowers the lag-1 correlation to $0.29$. The
+autocorrelation function is still not geometric. Lag 3 stays near $0.21$,
+with partial autocorrelation $0.18$, and the partial autocorrelations at lags
+4 and 6 stay near $0.10$. Lag 7 remains near $0.18$ in the autocorrelation,
+while its partial autocorrelation is $0.05$ on the full sample and $0.08$
+with the blocks removed, so little of that lag is a weekly cycle left over
+from the day-of-week terms. The extra memory is a few days, much smaller than
+the log-scale picture, and the holdout is what rejects AR(2).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/01d_residual.png}
+\caption{kWh residuals after trend, two harmonics and day of week. Left: the
+autocorrelation, with and without the low-use blocks, against the geometric
+decay implied by the lag-1 coefficient. Right: residual scale by month. The
+August point drops once the vacancy blocks are removed; the February point
+does not.}
+\end{figure}
+
+The heavy tail is real on this scale, and it is broader than the four blocks.
+Residual excess kurtosis is $2.0$ (raw kurtosis about $5$, against $3$ for a
+Gaussian). The blocks are $4.0\%$ of days and $11\%$ of residual sum of
+squares. The worst $5\%$ of days, $71$ of them, account for $40\%$ of that
+sum of squares. About half of that extreme sum of squares is positive
+residuals, led by the winter spikes (23 December 2006 is a residual of
+$+39.8\kwh$), and about half is negative. Only $11$ of the $71$ days sit inside
+the long blocks, so the tail is a mixture of heating spikes and short
+absences, not the four vacations alone. A $t$ innovation has both tails to
+absorb.
+
+The scale of the residual is also seasonal, and the vacancies are not the
+reason. After the mean structure, winter residual standard deviation is
+$9.4\kwh$ and summer is $6.1$; excluding the blocks the two numbers are
+$9.1$ and $5.1$. February stays near $10\kwh$ with the block removed.
+September is $3.9\kwh$. A single innovation variance is an average across a
+quiet September and a volatile February. That is a limitation of the fitted
+model, recorded as such below, not a reason to change the likelihood family.
 
 \section{The model}
 
@@ -611,6 +878,9 @@ $25.96\kwh$/day $[25.41, 26.50]$ at the record midpoint. The annual cycle is by
 far the largest source of variation, with a full seasonal range of
 $18.25\kwh$/day $[16.48, 20.06]$; the weekly cycle contributes about
 $4.56\kwh$; the one-step innovation standard deviation is $5.59\kwh$.
+The exploratory $R^2$ decomposition agrees about the ordering: the first
+harmonic's increment is $0.36$, day of week adds $0.05$, the trend adds
+$0.01$, and the three together stop at $R^2 = 0.45$.
 
 \paragraph{Q2 --- long-term trend: no evidence.} The slope is
 $-0.186\kwh$/year $[-0.667, +0.292]$, equivalently $-0.72\%$/year
@@ -652,7 +922,9 @@ $-2.15$, Thursday $-2.75$ $[-3.51, -1.99]$. The weekend-minus-weekday contrast
 is $4.56\kwh$/day $[3.71, 5.42]$ with
 $\Pr(\text{weekend} > \text{weekday} \mid \text{data}) = 1.0000$ --- the
 clearest effect in the entire analysis, and physically obvious: the house is
-occupied.
+occupied. The exploratory regressions put the same premium at $8.0\kwh$/day
+in winter and $2.1\kwh$/day in summer, so the additive term is the average of
+a heating effect and a smaller occupancy effect.
 
 \paragraph{Q5 --- predictive accuracy saturates within four days.} This is the
 cleanest result. The width of the $95\%$ predictive interval rises from
@@ -853,6 +1125,20 @@ over-dispersed ($50\%$ intervals covering $58$--$68\%$); and the climatology's
 advantage comes precisely from being locally flexible in day-of-year while
 carrying no extrapolated trend.
 
+The exploratory analysis complicates the August part of that diagnosis
+without retiring it. The sharp notch in the raw August curve is the 2008
+vacancy, mean $4.8\kwh$ from 6 to 30 August, and occupied August sits near
+$18\kwh$. The two-harmonic trough, at $16.2\kwh$, falls between that and the
+raw August mean. A day-of-year window fit on the
+training years folds the 2008 vacancy into the climatology for early and mid
+August. The test year is itself vacant from 29 July to 14 August 2010, so the
+two absences overlap on 6--14 August and the climatology is credited for a
+repeated trip. That can account for a slice of the August error. The score
+gap is over the whole test year, so a missing seasonal shape remains the
+working diagnosis for the rest of the calendar. In sample, month indicators
+beat two harmonics by only $0.018$ of $R^2$, which says the missing shape is
+a local wiggle rather than a component as large as the first harmonic.
+
 The planned resolution is to extend the harmonic order to $J = 6$ on the kWh
 scale, fit a variant without the linear trend (whose extrapolation over a year
 may itself be damaging), and enter the climatology as a competitor in the
@@ -872,11 +1158,26 @@ $26\kwh$) are a genuine feature, not a modelling failure.
 
 \item \textbf{No temperature covariate.} Heating and hot water drive most of the
 seasonal signal, and heating demand responds to weather, not to the calendar.
-The harmonics are a proxy for \emph{average} weather on a given day of year, so
-a cold snap in a mild February is unexplained noise by construction. This is
-the honest explanation for most of the Q6 anomaly table and the main reason the
-$t$ likelihood is doing real work. Merging in daily temperature for Paris would
+The sub-meter split locates the winter peak in the unmetered remainder, which
+is where electric heating sits, and February's residual standard deviation
+stays near $10\kwh$ after the vacancy block is removed. The harmonics are a
+proxy for \emph{average} weather on a given day of year, so a cold snap in a
+mild February is unexplained noise by construction. This is the honest
+explanation for most of the Q6 anomaly table and the main reason the $t$
+likelihood is doing real work. Merging in daily temperature for Paris would
 be the single highest-value extension.
+
+\item \textbf{The weekend premium depends on the season.} After month
+indicators the weekend runs $8.0\kwh$/day above the weekdays in winter and
+$2.1\kwh$/day above them in summer, with winter's interval entirely above
+summer's. The fitted day-of-week term is that average. It summarises a single
+weekly profile, and a winter Saturday sits well above the profile.
+
+\item \textbf{Innovation scale depends on the season.} With the mean structure
+removed, winter residuals have standard deviation about $9\kwh$ and summer
+residuals about $5\kwh$, vacancies excluded. A constant $\sigma$ averages a
+volatile February and a quiet September. The $t$ weights absorb isolated
+spikes; they do not give winter a wider innovation.
 
 \item \textbf{Trend and season are mildly confounded.} The record spans $3$
 years $11$ months, not a whole number of years, so the seasonal cycle is not
@@ -914,6 +1215,7 @@ Script & Purpose & Runtime \\
 \code{01\_aggregate.py} & Parse, aggregate to daily kWh, coverage rule & 11\,s \\
 \code{01b\_transform\_check.py} & Response-scale and error-structure evidence & 13\,s \\
 \code{01c\_ar\_order\_check.py} & AR order, with and without absence blocks & 1\,s \\
+\code{01d\_indepth\_eda.py} & Variance, season, end use, week, diurnal profile & 3\,s \\
 \code{02\_validate\_sampler.py} & Recovery of known parameters on simulated data & 11\,s \\
 \code{03\_fit\_models.py} & Fit M1--M7, convergence, WAIC & 6\,min \\
 \code{04\_holdout.py} & Refit on training data, designs A and B, scoring & 4\,min \\
