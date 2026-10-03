@@ -15,13 +15,27 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ### 1.1.1 The Brief 
 
+Our objective is to characterize temporal patterns in daily household electricity consumption, and develop a Bayesian analysis that can be used to predict future daily electricity demand, as well as quantify uncertainty in those predictions. To do so, we utilize the UCI Individual Household Electric Power Consumption dataset.
+
 ### 1.1.2 Scientific Questions and the Model 
 
+Through exploratory data analysis and our building of our Bayesian model, we will attempt to answer the following: 
+1) How does daily household electricity consumption vary over the study period?
+2) Is there evidence of a long-term increase or decrease in electricity consumption?
+3) What annual seasonal pattern is present, and does the second harmonic provide an important improvement over the first-harmonic representation?
+4) Are there systematic weekly patterns in electricity demand?
+5) How accurate can futrue daily electricity consumption be predicted, and how does predicitive uncertainty change with the forecasting horizon?
+6) Are there periods of unusally high or low electricity consumption that are not adequately explained by the fitted model?
+
 ### 1.1.3 Why Is This a Bayesian Problem
+
+These scientific questions don't necessarily have to be answered with a Bayesian model. Using frequentist techniques, we can answer all these questions by simply fitting a harmonic regression with AR errors, estimating parameters, constructing predicition intervals, and then forecasting future electricity consumption. However, using Bayesian methods, we can better quantify uncertainty that's occuring at all levels of the data (unknown seasonal effects, unknown AR dependence, unknown tail behavior, missing observations, etc.), as well as propagate that uncertainty in all our forecasts. For example, we could have a posterior distribution for every quantity and predictive distribution for every future day. This is why we'd utilize a Bayesian model specifically. 
 
 ## 1.2 The Data 
 
 ### 1.2.1 Provenance and Physical Form 
+
+As mentioned before, our data is from the UCI Individual Household Electric Power Consumption dataset. This dataset records 2,075,259 one-minute measurements of household electricity use (among other variables) from a house in Sceaux (a commune in the suburbs of Paris) between December 2006 and November 2010. There are nine variables recorded in the dataset:
 
 ### 1.2.2 Four Traps That Silently Corrupt the Pipeline
 
