@@ -24,18 +24,20 @@ Through exploratory data analysis and our building of our Bayesian model, we wil
 2) Is there evidence of a long-term increase or decrease in electricity consumption?
 3) What annual seasonal pattern is present, and does the second harmonic provide an important improvement over the first-harmonic representation?
 4) Are there systematic weekly patterns in electricity demand?
-5) How accurate can futrue daily electricity consumption be predicted, and how does predicitive uncertainty change with the forecasting horizon?
-6) Are there periods of unusally high or low electricity consumption that are not adequately explained by the fitted model?
+5) How accurate can future daily electricity consumption be predicted, and how does predictive uncertainty change with the forecasting horizon?
+6) Are there periods of unusually high or low electricity consumption that are not adequately explained by the fitted model?
 
 ### 1.1.3 Why Is This a Bayesian Problem
 
-These scientific questions don't necessarily have to be answered with a Bayesian model. Using frequentist techniques, we can answer all these questions by simply fitting a harmonic regression with AR errors, estimating parameters, constructing predicition intervals, and then forecasting future electricity consumption. However, using Bayesian methods, we can better quantify uncertainty that's occuring at all levels of the data (unknown seasonal effects, unknown AR dependence, unknown tail behavior, missing observations, etc.), as well as propagate that uncertainty in all our forecasts. For example, we could have a posterior distribution for every quantity and predictive distribution for every future day. This is why we'd utilize a Bayesian model specifically. 
+These scientific questions don't necessarily have to be answered with a Bayesian model. Using frequentist techniques, we can answer all these questions by simply fitting a harmonic regression with AR errors, estimating parameters, constructing prediction intervals, and then forecasting future electricity consumption. However, using Bayesian methods, we can better quantify uncertainty that's occurring at all levels of the data (unknown seasonal effects, unknown AR dependence, unknown tail behavior, missing observations, etc.), as well as propagate that uncertainty in all our forecasts. For example, we could have a posterior distribution for every quantity and predictive distribution for every future day. This is why we'd utilize a Bayesian model specifically. 
 
 ## 1.2 The Data 
 
-### 1.2.1 Provenance and Physical Form 
+### 1.2.1 Overall Data Structure = Provenance and Physical Form
 
-As mentioned before, our data is from the UCI Individual Household Electric Power Consumption dataset. This dataset records 2,075,259 one-minute measurements of household electricity use (among other variables) from a house in Sceaux (a commune in the suburbs of Paris) between December 2006 and November 2010. There are nine variables recorded in the dataset:
+The UCI *Individual Household Electric Power Consumption* dataset records 2,075,259 one-minute measurements from a single house (not a grid) in Sceaux, France between December 2006 and November 2010 (47 months).
+
+Of the nine recorded variables in the dataset, only `Global_active_power` enters the analysis directly. `Time` is used in data transformation, then discarded. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The remaining electrical channels are discarded since`Global_reactive_power` and `Voltage` are irrelevant to active energy consumption, and `Global_intensity` is nearly collinear with `Global_active_power`. The three sub-metering channels are retained solely as a consistency check, since they do not sum to the whole-house total.
 
 ### 1.2.2 Four Traps That Silently Corrupt the Pipeline
 
