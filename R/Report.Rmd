@@ -9,64 +9,59 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# 1. Scientific Question and Data
+# 1. Introduction
 
-## 1.1 Project Specifications 
+Residential electricity demand varies over time because of household activity, weekly patterns, seasonal changes, holidays, and many other factors. Accurately forecasting electricity demand is crucial for energy planning and management. The objective of this project is to characterize temporal patterns in daily household electricity consumption and develop a Bayesian analysis that can be used to predict future daily electricity demand, as well as quantify uncertainty in those predictions. Further, a non-Bayesian alternative approach is to be considered and compared with the Bayesian model. To do so, we utilize the UCI *Individual Household Electric Power Consumption* dataset.
 
-### 1.1.1 The Brief 
+## 1.1 Scientific Questions and the Model
 
-Our objective is to characterize temporal patterns in daily household electricity consumption, and develop a Bayesian analysis that can be used to predict future daily electricity demand, as well as quantify uncertainty in those predictions. To do so, we utilize the UCI Individual Household Electric Power Consumption dataset.
+Through exploratory data analysis and our building of our Bayesian model, we will attempt to answer the following:
 
-### 1.1.2 Scientific Questions and the Model 
+1.  How does daily household electricity consumption vary over the study period?
 
-Through exploratory data analysis and our building of our Bayesian model, we will attempt to answer the following: 
-1) How does daily household electricity consumption vary over the study period?
-2) Is there evidence of a long-term increase or decrease in electricity consumption?
-3) What annual seasonal pattern is present, and does the second harmonic provide an important improvement over the first-harmonic representation?
-4) Are there systematic weekly patterns in electricity demand?
-5) How accurate can future daily electricity consumption be predicted, and how does predictive uncertainty change with the forecasting horizon?
-6) Are there periods of unusually high or low electricity consumption that are not adequately explained by the fitted model?
+2.  Is there evidence of a long-term increase or decrease in electricity consumption?
 
-### 1.1.3 Why Is This a Bayesian Problem
+3.  What annual seasonal pattern is present, and does the second harmonic provide an important improvement over the first-harmonic representation?
 
-These scientific questions don't necessarily have to be answered with a Bayesian model. Using frequentist techniques, we can answer all these questions by simply fitting a harmonic regression with AR errors, estimating parameters, constructing prediction intervals, and then forecasting future electricity consumption. However, using Bayesian methods, we can better quantify uncertainty that's occurring at all levels of the data (unknown seasonal effects, unknown AR dependence, unknown tail behavior, missing observations, etc.), as well as propagate that uncertainty in all our forecasts. For example, we could have a posterior distribution for every quantity and predictive distribution for every future day. This is why we'd utilize a Bayesian model specifically. 
+4.  Are there systematic weekly patterns in electricity demand?
 
-## 1.2 The Data 
+5.  How accurate can future daily electricity consumption be predicted, and how does predictive uncertainty change with the forecasting horizon?
 
-### 1.2.1 Overall Data Structure = Provenance and Physical Form
+6.  Are there periods of unusually high or low electricity consumption that are not adequately explained by the fitted model?
+
+## 1.2 Why Is This a Bayesian Problem
+
+These scientific questions don't necessarily have to be answered with a Bayesian model. Using frequentist techniques, we can answer all these questions by simply fitting a harmonic regression with AR errors, estimating parameters, constructing prediction intervals, and then forecasting future electricity consumption. However, using Bayesian methods, we can better quantify uncertainty that's occurring at all levels of the data (unknown seasonal effects, unknown AR dependence, unknown tail behavior, missing observations, etc.), as well as propagate that uncertainty in all our forecasts. For example, we could have a posterior distribution for every quantity and predictive distribution for every future day. This is why we'd utilize a Bayesian model specifically.
+
+## 1.3 The Data
+
+### 1.3.1 Overall Data Structure
 
 The UCI *Individual Household Electric Power Consumption* dataset records 2,075,259 one-minute measurements from a single house (not a grid) in Sceaux, France between December 2006 and November 2010 (47 months).
 
 Of the nine recorded variables in the dataset, only `Global_active_power` enters the analysis directly. `Time` is used in data transformation, then discarded. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The remaining electrical channels are discarded since`Global_reactive_power` and `Voltage` are irrelevant to active energy consumption, and `Global_intensity` is nearly collinear with `Global_active_power`. The three sub-metering channels are retained solely as a consistency check, since they do not sum to the whole-house total.
 
-### 1.2.2 Four Traps That Silently Corrupt the Pipeline
+### 1.3.2 Data Cleaning
 
-### 1.2.3 Data Transformation  
-The dataset provides `Global_active_power` (GAP), defined as the household global minute-averaged active power in kilowatt (kW). The main objective is framed around daily energy consumption, so a transformation of this variable is essential. **Power (kW)** represents instantaneous rate of delivering energy and total **energy (kWh)** consumption over a time interval is obtained by summing discrete power values multiplied by the duration of each sampling interval (cite a source!!!).  
+### 1.3.3 Data Transformation
 
-I this dataset, each GAP value represents one minute of average power, and $ 1\text{ minute} = (1/60) \text{ hour}$. Thus, energy consumption during minute $m$ is
-$$
-E_m = GAP_m* \dfrac{1}{60} \text{ (kWh)}.
-$$
-To obtain the daily average energy consumption, these minute-level energy values are summed across all minutes in a day:
-$$
-\begin{align}
+The dataset provides `Global_active_power` (GAP), defined as the household global minute-averaged active power in kilowatt (kW). The main objective is framed around daily energy consumption, so a transformation of this variable is essential. **Power (kW)** represents instantaneous rate of delivering energy and total **energy (kWh)** consumption over a time interval is obtained by summing discrete power values multiplied by the duration of each sampling interval (**cite a source!!!**).
+
+In this dataset, each GAP value represents one minute of average power, and $1\text{ minute} = (1/60) \text{ hour}$. Thus, energy consumption during minute $m$ is $$E_m = GAP_m* \dfrac{1}{60} \text{ (kWh)}.$$ To obtain the daily average energy consumption, these minute-level energy values are summed across all minutes in a day: $$\begin{align}
 Y_d &= \sum_{m \in d} E_m \\[6pt]
 &= \sum_{m \in d} \left( \text{GAP}_m \times \frac{1}{60} \right) \\[6pt]
 &= \frac{1}{60} \sum_{m \in d} \text{GAP}_m
-\end{align}
-$$
-$Y_d$ denotes the daily household energy consumption (kWh) and serves as the primary response variable for all subsequent analyses.
+\end{align}$$ $Y_d$ denotes the daily household energy consumption (kWh) and serves as the primary response variable for all subsequent analyses.
 
-# 2. Exploratory Data Analaysis
+# 2. Exploratory Data Analysis
 
 ## 2.1 General Patterns
 
-The aggregated daily series has substantial seasonal and weekly variation in daily household energy consumption. There's considerably higher average demand during the winter, and much lower during the summer. This is reflected in the monthly means, which ragne from approximately 13.67 kWh/day in August to 35.64 kWh in December. Additionally, daily consumption has recurring differences across the seven days of the week, especially between weekdays and weekends. Lastly, we see several extended periods of unusually low consumption-- for example, a 25-day period in August 2008 where mean consumption was approximately 4.76 kwH/day. Therefore, when building our model, we consider variables to account for all three of these effects (a first and possibly second harmonic to describe the shape of the seasonal cycle, day-of-week effects, and an occupancy regime variable to account for abscence periods). 
+The aggregated daily series has substantial seasonal and weekly variation in daily household energy consumption. There's considerably higher average demand during the winter, and much lower during the summer. This is reflected in the monthly means, which ragne from approximately 13.67 kWh/day in August to 35.64 kWh in December. Additionally, daily consumption has recurring differences across the seven days of the week, especially between weekdays and weekends. Lastly, we see several extended periods of unusually low consumption-- for example, a 25-day period in August 2008 where mean consumption was approximately 4.76 kwH/day. Therefore, when building our model, we consider variables to account for all three of these effects (a first and possibly second harmonic to describe the shape of the seasonal cycle, day-of-week effects, and an occupancy regime variable to account for abscence periods).
 
 ## 2.2 Response Variable
 
-We then look at whether transforming the response variables can improve our residual fit. We fit linear regressions with annual harmonics and day-of-week effects, and then look at differences between R^2, residual skew, residual kurtosis, and heteroskedasticity when using Y versus log(y) versus sqrt(y). We find both transformations increase residual skewness without increasing R^2 or decreasing residual kurtosis, suggesting that our original response variable is best for our model. However, the sustained abscence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model. Two other important notes are the heavy tails and the heteroscedasticity, which both persist across response variable specifications-- the heavy tails suggest that we should use a t-likelihood, but the heteroscedasticity still needs to be corrected.
+We then look at whether transforming the response variables can improve our residual fit. We fit linear regressions with annual harmonics and day-of-week effects, and then look at differences between R\^2, residual skew, residual kurtosis, and heteroskedasticity when using Y versus log(y) versus sqrt(y). We find both transformations increase residual skewness without increasing R\^2 or decreasing residual kurtosis, suggesting that our original response variable is best for our model. However, the sustained abscence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model. Two other important notes are the heavy tails and the heteroscedasticity, which both persist across response variable specifications-- the heavy tails suggest that we should use a t-likelihood, but the heteroscedasticity still needs to be corrected.
 
 ## 2.3 Temporal Dependence
 
@@ -74,9 +69,14 @@ After accounting for seasonality and day-of-week effects, residuals remain stron
 
 ## 2.4 Implications for Model
 
-There are several implications for our final Bayesian model, including but not limited to: 
-1) Systematic mean structure: daily consumption varies with long-term time, annual seasonality, and day of the week.
-2) Response scale: the original kWh scale is preferable to the square-root and logarithmic transformations with respect to residual symmetry, although heteroscedasticity remains to be investigated
-3) Heavy tails: residual kurtosis is larger than the Gaussian benchmark, motivating consideration of a Student-(t) likelihood
-4) Temporal dependence: residuals are not independent, and the appropriate dependence structure remains an empirical question to be resolved through comparison of candidate models.
-5) Sustained unusual periods: some long stretches of low consumption may represent changes in household operating state rather than isolated random outliers, which may limit the ability of a simple autoregressive error model to describe or forecast these periods
+There are several implications for our final Bayesian model, including but not limited to:
+
+1.  Systematic mean structure: daily consumption varies with long-term time, annual seasonality, and day of the week.
+
+2.  Response scale: the original kWh scale is preferable to the square-root and logarithmic transformations with respect to residual symmetry, although heteroscedasticity remains to be investigated
+
+3.  Heavy tails: residual kurtosis is larger than the Gaussian benchmark, motivating consideration of a Student-(t) likelihood
+
+4.  Temporal dependence: residuals are not independent, and the appropriate dependence structure remains an empirical question to be resolved through comparison of candidate models.
+
+5.  Sustained unusual periods: some long stretches of low consumption may represent changes in household operating state rather than isolated random outliers, which may limit the ability of a simple autoregressive error model to describe or forecast these periods
