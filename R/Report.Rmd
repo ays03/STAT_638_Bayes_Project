@@ -56,3 +56,25 @@ Y_d &= \sum_{m \in d} E_m \\[6pt]
 $$
 $Y_d$ denotes the daily household energy consumption (kWh) and serves as the primary response variable for all subsequent analyses.
 
+# 2. Exploratory Data Analaysis
+
+## 2.1 General Patterns
+
+The aggregated daily series has substantial seasonal and weekly variation in daily household energy consumption. There's considerably higher average demand during the winter, and much lower during the summer. This is reflected in the monthly means, which ragne from approximately 13.67 kWh/day in August to 35.64 kWh in December. Additionally, daily consumption has recurring differences across the seven days of the week, especially between weekdays and weekends. Lastly, we see several extended periods of unusually low consumption-- for example, a 25-day period in August 2008 where mean consumption was approximately 4.76 kwH/day. Therefore, when building our model, we consider variables to account for all three of these effects (a first and possibly second harmonic to describe the shape of the seasonal cycle, day-of-week effects, and an occupancy regime variable to account for abscence periods). 
+
+## 2.2 Response Variable
+
+We then look at whether transforming the response variables can improve our residual fit. We fit linear regressions with annual harmonics and day-of-week effects, and then look at differences between R^2, residual skew, residual kurtosis, and heteroskedasticity when using Y versus log(y) versus sqrt(y). We find both transformations increase residual skewness without increasing R^2 or decreasing residual kurtosis, suggesting that our original response variable is best for our model. However, the sustained abscence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model. Two other important notes are the heavy tails and the heteroscedasticity, which both persist across response variable specifications-- the heavy tails suggest that we should use a t-likelihood, but the heteroscedasticity still needs to be corrected.
+
+## 2.3 Temporal Dependence
+
+After accounting for seasonality and day-of-week effects, residuals remain strongly corrected over time. The sample residual autocorrelation is approximately 0.582 at lag 1, 0.455 at lag 2, and 0.432 at lag 3, and 0.273 at lag 7. By itself, this suggests an AR(3) model or higher. However, when taking into account the previously mentioned absence periods, we find that an AR(1) model fits the data the best. Therefore, some of that long-range dependence may be an occupancy regime effect rather than actual high-order autoregressive memory. A next step should be to look at model structures with explicit dependence at weekly or annual time scales (AR(7) and AR(365).
+
+## 2.4 Implications for Model
+
+There are several implications for our final Bayesian model, including but not limited to: 
+1) Systematic mean structure: daily consumption varies with long-term time, annual seasonality, and day of the week.
+2) Response scale: the original kWh scale is preferable to the square-root and logarithmic transformations with respect to residual symmetry, although heteroscedasticity remains to be investigated
+3_ Heavy tails: residual kurtosis is larger than the Gaussian benchmark, motivating consideration of a Student-(t) likelihood
+4) Temporal dependence: residuals are not independent, and the appropriate dependence structure remains an empirical question to be resolved through comparison of candidate models.
+5) Sustained unusual periods: some long stretches of low consumption may represent changes in household operating state rather than isolated random outliers, which may limit the ability of a simple autoregressive error model to describe or forecast these periods
