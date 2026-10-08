@@ -37,31 +37,36 @@ These scientific questions don't necessarily have to be answered with a Bayesian
 
 ### 1.3.1 Overall Data Structure
 
-The UCI *Individual Household Electric Power Consumption* dataset records 2,075,259 one-minute measurements from a single house (not a grid) in Sceaux, France between December 2006 and November 2010 (47 months).
-
-Of the nine recorded variables in the dataset, only `Global_active_power` enters the analysis directly. `Time` is used in data transformation, then discarded. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The remaining electrical channels are discarded since`Global_reactive_power` and `Voltage` are irrelevant to active energy consumption, and `Global_intensity` is nearly collinear with `Global_active_power`. The three sub-metering channels are retained solely as a consistency check, since they do not sum to the whole-house total.
+The UCI *Individual Household Electric Power Consumption* dataset records 2,075,259 one-minute electric power consumption measurements from a single house (not a grid) in Sceaux, France between December 2006 and November 2010 (47 months). Each instance contains nine recorded variables: `Date`, `Time`, `Global_active_power`,`Global_reactive_power`, `Voltage`, `Global_intensity`,`Sub_metering_1`,`Sub_metering_2`,and `Sub_metering_3`.
 
 ### 1.3.2 Data Cleaning
 
+Missing readings are coded as `?` in the raw file and dates are recorded day-first. Of the 2,075,259 minutes, 25,979 (1.25%) lack a power reading, and these appear consecutively instead of scattered single minutes. We dropped the first and last days of the dataset as they have partial measurements and verified that every remaining day has 1440 minute rows with no duplicate time stamps. For each day we computed $\text{Coverage} = \text{observed minutes} / 1440$ and retained days with $\text{Coverage} \geq 0.95$. For retained days that had missing minutes, we filled each missing minute with that day's average power (equivalent of scaling up the day's total to 1440 minutes). Days below the threshold were kept on the calendar but treated as missing instead of deleted, so the daily series remains a sequence of consecutive days.\
+In the end, we have 1417 retained days and 23 missing days (of which 9 have no observed minutes). As a consistency check, we verified that the sub-meter energy never exceeded the house total on any retained day.
+
 ### 1.3.3 Data Transformation
 
-The dataset provides `Global_active_power` (GAP), defined as the household global minute-averaged active power in kilowatt (kW). The main objective is framed around daily energy consumption, so a transformation of this variable is essential. **Power (kW)** represents instantaneous rate of delivering energy and total **energy (kWh)** consumption over a time interval is obtained by summing discrete power values multiplied by the duration of each sampling interval (**cite a source!!!**).
+The dataset provides `Global_active_power` (GAP), the household global minute-averaged active power in kilowatts (kW). The main objective is framed around daily energy consumption, so a transformation of this variable is essential. **Power (kW)** represents instantaneous rate of delivering energy and total **energy (kWh)** consumption over a time interval is obtained by summing discrete power values multiplied by the duration of each sampling interval (*Hébrail and Bérard, UCI Machine Learning Repository*).
 
-In this dataset, each GAP value represents one minute of average power, and $1\text{ minute} = (1/60) \text{ hour}$. Thus, energy consumption during minute $m$ is $$E_m = GAP_m* \dfrac{1}{60} \text{ (kWh)}.$$ To obtain the daily average energy consumption, these minute-level energy values are summed across all minutes in a day: $$\begin{align}
-Y_d &= \sum_{m \in d} E_m \\[6pt]
-&= \sum_{m \in d} \left( \text{GAP}_m \times \frac{1}{60} \right) \\[6pt]
-&= \frac{1}{60} \sum_{m \in d} \text{GAP}_m
-\end{align}$$ $Y_d$ denotes the daily household energy consumption (kWh) and serves as the primary response variable for all subsequent analyses.
+In this dataset, each GAP value represents one minute of average power, and $1\text{ minute} = (1/60) \text{ hour}$. Thus, energy consumption in minute $m$ is $$E_m = \text{GAP}_m* \dfrac{1}{60} \text{ (kWh)}.$$
 
-# 2. Exploratory Data Analysis
+The daily total energy consumption is the sum over all 1440 minutes of day $d$ (because missing minutes were filled in Data Cleaning): $$\begin{aligned}
+Y_d &= \sum_{m=1}^{1440} E_m \\[6pt]
+&= \sum_{m=1}^{1440} \left( \text{GAP}_m * \frac{1}{60} \right) \\[6pt]
+&= \frac{1}{60} \sum_{m=1}^{1440} \text{GAP}_m
+\end{aligned}$$
+
+$Y_d$ is computed only for days retained under our 0.95 coverage rule, and other days are treated as missing. $Y_d$ denotes the daily household energy consumption (kWh) and serves as our primary response variable for all subsequent analyses.
+
+# 2. Exploratory Data Analysis (EDA)
 
 ## 2.1 General Patterns
 
-The aggregated daily series has substantial seasonal and weekly variation in daily household energy consumption. There's considerably higher average demand during the winter, and much lower during the summer. This is reflected in the monthly means, which ragne from approximately 13.67 kWh/day in August to 35.64 kWh in December. Additionally, daily consumption has recurring differences across the seven days of the week, especially between weekdays and weekends. Lastly, we see several extended periods of unusually low consumption-- for example, a 25-day period in August 2008 where mean consumption was approximately 4.76 kwH/day. Therefore, when building our model, we consider variables to account for all three of these effects (a first and possibly second harmonic to describe the shape of the seasonal cycle, day-of-week effects, and an occupancy regime variable to account for abscence periods).
+The aggregated daily series has substantial seasonal and weekly variation in daily household energy consumption. There's considerably higher average demand during the winter, and much lower during the summer. This is reflected in the monthly means, which range from approximately 13.67 kWh/day in August to 35.64 kWh in December. Additionally, daily consumption has recurring differences across the seven days of the week, especially between weekdays and weekends. Lastly, we see several extended periods of unusually low consumption-- for example, a 25-day period in August 2008 where mean consumption was approximately 4.76 kwH/day. Therefore, when building our model, we consider variables to account for all three of these effects (a first and possibly second harmonic to describe the shape of the seasonal cycle, day-of-week effects, and an occupancy regime variable to account for abscence periods).
 
 ## 2.2 Response Variable
 
-We then look at whether transforming the response variables can improve our residual fit. We fit linear regressions with annual harmonics and day-of-week effects, and then look at differences between R\^2, residual skew, residual kurtosis, and heteroskedasticity when using Y versus log(y) versus sqrt(y). We find both transformations increase residual skewness without increasing R\^2 or decreasing residual kurtosis, suggesting that our original response variable is best for our model. However, the sustained abscence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model. Two other important notes are the heavy tails and the heteroscedasticity, which both persist across response variable specifications-- the heavy tails suggest that we should use a t-likelihood, but the heteroscedasticity still needs to be corrected.
+We then look at whether transforming the response variable can improve our residual fit. We fit linear regressions with annual harmonics and day-of-week effects, and then look at differences between R\^2, residual skew, residual kurtosis, and heteroskedasticity when using Y versus log(y) versus sqrt(y). We find both transformations increase residual skewness without increasing R\^2 or decreasing residual kurtosis, suggesting that our original response variable is best for our model. However, the sustained absence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model. Two other important notes are the heavy tails and the heteroscedasticity, which both persist across response variable specifications-- the heavy tails suggest that we should use a t-likelihood, but the heteroscedasticity still needs to be corrected.
 
 ## 2.3 Temporal Dependence
 
@@ -80,3 +85,9 @@ There are several implications for our final Bayesian model, including but not l
 4.  Temporal dependence: residuals are not independent, and the appropriate dependence structure remains an empirical question to be resolved through comparison of candidate models.
 
 5.  Sustained unusual periods: some long stretches of low consumption may represent changes in household operating state rather than isolated random outliers, which may limit the ability of a simple autoregressive error model to describe or forecast these periods
+
+## 2.5 Final Dataset Description
+
+I think we should re-write this part bc with its current placement, it doesn't make much sense to explain what each variable is used for (bc we are past that step). We can just describe what we have rn (not what we did to initial dataset). \<---IMPORTANT!!!
+
+Of the nine recorded variables in the dataset, only `Global_active_power` enters the analysis after being transformed into daily energy. `Time` is used in data cleaning to verify every full day contains exactly 1440 unique minutes and in EDA to describe within-day usage. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The remaining electrical channels are discarded since`Global_reactive_power` and `Voltage` are irrelevant to active energy consumption, and `Global_intensity` is nearly collinear with `Global_active_power`. The three sub-metering channels are retained solely as a consistency check, since they do not sum to the whole-house total.

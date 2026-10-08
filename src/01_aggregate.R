@@ -47,6 +47,7 @@ load_minutes <- function(path) {
   df
 }
 
+#group minutes by date and aggregates to days
 aggregate_daily <- function(df) {
   g <- as.integer(df$date)
   zero_na <- function(x) ifelse(is.na(x), 0, x)
@@ -59,10 +60,10 @@ aggregate_daily <- function(df) {
   n_rows <- rowsum(rep(1, nrow(df)), g, reorder = TRUE)
   data.frame(
     date = as.Date(as.integer(rownames(n_obs)), origin = "1970-01-01"),
-    n_obs = as.numeric(n_obs),
-    kwh_raw = as.numeric(kwh_raw),
+    n_obs = as.numeric(n_obs), # number of minutes that have a power reading
+    kwh_raw = as.numeric(kwh_raw), # sum of power/60 (will be used later)
     sub_kwh = as.numeric(sub_kwh),
-    n_rows = as.numeric(n_rows),
+    n_rows = as.numeric(n_rows), # how many minute rows the day has (to check that every day has 1440 rows later)
     stringsAsFactors = FALSE
   )
 }
@@ -70,7 +71,7 @@ aggregate_daily <- function(df) {
 main <- function() {
   ROOT <- script_root()
   RAW <- file.path(ROOT, "data", "household_power_consumption.txt")
-  MIN_COVERAGE <- 0.95
+  MIN_COVERAGE <- 0.95 # 95% rule
   MINUTES_PER_DAY <- 1440
   for (sub in c("figures", "results")) dir.create(file.path(ROOT, sub), showWarnings = FALSE)
 
@@ -79,31 +80,42 @@ main <- function() {
   n_rows <- nrow(minutes)
   n_missing <- sum(is.na(minutes$Global_active_power))
   daily <- aggregate_daily(minutes)
-  rm(minutes)
+  # Time used to verify one row per minute (no repeated time stamps)
+  stopifnot(!any(duplicated(minutes[, c("Date", "Time")])))
+  rm(minutes) # everything is on a daily scale now
 
   first <- daily$date[1]
   last <- daily$date[nrow(daily)]
   daily <- daily[-c(1, nrow(daily)), ]
+  # every full day should have exactly 1,440 minutes (rows)
+  stopifnot(all(daily$n_rows == 1440))
+  #build the full calendar and apply the 95% rule
   full_dates <- seq(min(daily$date), max(daily$date), by = "day")
   full <- merge(data.frame(date = full_dates), daily, by = "date", all.x = TRUE, sort = TRUE)
   full$n_obs[is.na(full$n_obs)] <- 0
   full$coverage <- full$n_obs / MINUTES_PER_DAY
   full$coverage[is.na(full$coverage)] <- 0
   full$observed <- full$coverage >= MIN_COVERAGE
-  full$kwh <- ifelse(full$observed, full$kwh_raw, NA_real_)
+  #for retained days with few missing values, re-scale the daily total 
+  # (equivalent to filling each missing minute on a retained day with that day's 
+  #  average observed power then summing all 1440 minutes to get daily energy)
+  full$kwh <- ifelse(full$observed, full$kwh_raw * MINUTES_PER_DAY / full$n_obs, NA_real_)
   full$t <- seq_len(nrow(full))
   full$dow <- as.integer(format(full$date, "%u")) - 1L
   full$year <- as.integer(format(full$date, "%Y"))
   full$doy <- as.integer(format(full$date, "%j"))
 
   obs <- full[full$observed, ]
-  bad <- sum(obs$sub_kwh > obs$kwh, na.rm = TRUE)
+  bad <- sum(obs$sub_kwh > obs$kwh_raw, na.rm = TRUE)
 
   out <- full[, c("date", "t", "kwh", "dow", "n_obs", "coverage", "observed", "sub_kwh", "year", "doy")]
   op <- options(digits = 15, scipen = 999)
   on.exit(options(op), add = TRUE)
   write.csv(out, file.path(ROOT, "data", "daily.csv"), row.names = FALSE, na = "")
 
+################################################################################
+# Summary and Figures
+################################################################################
   lines <- character()
   add <- function(s) lines <<- c(lines, s)
   add("RAW FILE")
