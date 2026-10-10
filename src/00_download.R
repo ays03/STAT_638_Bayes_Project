@@ -47,6 +47,8 @@ main <- function() {
     cat(sprintf("already present and correct size: %s\n", TXT))
     return(invisible(NULL))
   }
+  
+  options(timeout = max(600, getOption("timeout")))
 
   if (!file.exists(ZIP)) {
     cat(sprintf("downloading %s\n", URL))
@@ -84,4 +86,5 @@ main <- function() {
   cat("\nok. Next: Rscript src/01_aggregate.R\n")
 }
 
-if (sys.nframe() == 0L) main()
+# if (sys.nframe() == 0L) main()
+main()
