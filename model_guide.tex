@@ -1,0 +1,651 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue]{hyperref}
+\hypersetup{pdftitle={Model Guide: Bayesian Forecasting of Household Electricity Demand},
+            pdfauthor={STAT 638 Project 17}}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+\setlist{itemsep=2pt,parsep=0pt,topsep=3pt}
+% Never start a page right after a displayed equation, so an equation stays
+% with the explanation or symbol table that follows it, and never leave the
+% first or last line of a paragraph alone on a page.
+\postdisplaypenalty=10000
+\clubpenalty=10000
+\widowpenalty=10000
+\makeatletter\@clubpenalty=\clubpenalty\makeatother
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small STAT 638 Project 17 --- model guide}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\newcommand{\kwh}{\,\mathrm{kWh}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\ci}[3]{$#1$\ \ [$#2$,\ $#3$]}
+
+\DeclareMathOperator{\dow}{dow}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\SD}{SD}
+\DeclareMathOperator{\atantwo}{atan2}
+\DeclareMathOperator{\GammaDist}{Gamma}
+\DeclareMathOperator{\Unif}{Uniform}
+\DeclareMathOperator{\Expo}{Exponential}
+
+% Two-column reference table. It never splits across pages and stays on the
+% same page as the line or equation that introduces it.
+% Arguments: first-column width (fraction of \textwidth), first header, second header.
+\newenvironment{reftable}[3]
+  {\par\nopagebreak\addvspace{4pt}\noindent
+   \renewcommand{\arraystretch}{1.3}%
+   \begin{tabular}{@{}>{\raggedright\arraybackslash}p{#1\textwidth}
+                      >{\raggedright\arraybackslash}p{\dimexpr0.97\textwidth-#1\textwidth-2\tabcolsep\relax}@{}}
+   \toprule \textbf{#2} & \textbf{#3} \\ \midrule}
+  {\bottomrule\end{tabular}\par\addvspace{8pt}}
+
+\title{\vspace{-1.2cm}\textbf{Model Guide: Bayesian Forecasting of Household Electricity Demand}\\[2pt]
+\large The model, every equation and symbol, and what the results mean}
+\author{Project 17}
+\date{\today}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\noindent
+This guide collects the model-related explanations in one place: the data that
+enter the model, the equations and the meaning of every symbol, the priors, how
+the posterior was computed and checked, how forecasts are made and scored, what
+the results say, the limitations, and the recommended next steps. Full
+derivations and reproducible numbers are in \code{report.tex},
+\code{src/model.py}, and \code{results/}.
+
+% ---------------------------------------------------------------------------
+\section{What is being modelled}
+
+\begin{itemize}[leftmargin=*]
+\item The data come from one household near Paris, recorded from December 2006
+  through November 2010.
+\item The raw file records the average active power in every minute, in
+  kilowatts (kW).
+\item A minute is $1/60$ of an hour, so the energy used on day $d$ is
+\end{itemize}
+\begin{equation}
+y_d = \frac{1}{60}\sum_{m \in d} \mathrm{GAP}_m \qquad [\mathrm{kWh}].
+\label{eq:agg}
+\end{equation}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$d$ & A calendar day. \\
+$m \in d$ & The recorded minutes $m$ that belong to day $d$. \\
+$\mathrm{GAP}_m$ & Global active power in minute $m$, in kW. \\
+$\sum_{m \in d}$ & Add up the values over all recorded minutes of day $d$. \\
+$1/60$ & Converts one minute at a power of 1 kW into kWh. Equation~\eqref{eq:agg} is a daily \emph{sum}, not a daily mean. \\
+$y_d$ & Total energy used on day $d$, in kilowatt-hours (kWh). \\
+\end{reftable}
+
+\begin{itemize}[leftmargin=*]
+\item The two partial days at the start and end of the record are dropped. A
+  remaining day counts as observed only if at least 95\% of its 1,440 minutes
+  are present.
+\item The result is a gap-free grid of $T = 1{,}440$ calendar days: 1,417
+  observed and 23 missing. Missing days stay on the grid, so the day-to-day
+  error process remains continuous.
+\end{itemize}
+
+The scientific goals are to describe long-term, yearly, and weekly patterns; to
+forecast future daily demand with honest uncertainty; and to identify unusual
+days or periods.
+
+% ---------------------------------------------------------------------------
+\section{The general model}
+
+Every model fitted in the project belongs to this family:
+\begin{align}
+z_t &= g(y_t), \label{eq:link}\\
+z_t &= \mathbf{x}_t^{\top}\boldsymbol\beta + \varepsilon_t, \label{eq:reg}\\
+\mathbf{x}_t^{\top}\boldsymbol\beta
+  &= \beta_0 + \beta_1\,\frac{t-\bar t}{365}
+   + \sum_{j=1}^{J}\left[a_j \sin\!\left(\frac{2\pi j t}{365}\right)
+   + b_j \cos\!\left(\frac{2\pi j t}{365}\right)\right] \notag\\
+  &\qquad + \sum_{k=2}^{7}\delta_k\,\mathbf{1}\{\dow_t = k\}, \label{eq:mean}\\
+\varepsilon_t &= \sum_{\ell=1}^{p}\phi_\ell\,\varepsilon_{t-\ell} + \eta_t,
+  \qquad \eta_t \sim t_\nu(0,\sigma^2). \label{eq:ar}
+\end{align}
+
+\noindent\textbf{In words:} daily consumption $=$ a calendar-based prediction
+$+$ a leftover that partly carries over from day to day, with occasional very
+large surprises allowed. Equation~\eqref{eq:reg} splits each day into the
+predictable part and the leftover, equation~\eqref{eq:mean} is the predictable
+part, and equation~\eqref{eq:ar} describes the leftover.
+
+\subsection{How to read the notation}
+
+\begin{reftable}{0.25}{Notation}{Meaning}
+$=$ & Equals. \\
+$+$,\ $-$ & Add, subtract. \\
+$a/b$ or $\frac{a}{b}$ & $a$ divided by $b$. \\
+Subscript, e.g.\ $y_t$ & Identifies which day, lag, harmonic, or category the quantity belongs to. \\
+Superscript 2, e.g.\ $\sigma^2$ & The quantity squared. \\
+Bold, e.g.\ $\mathbf{x}$, $\boldsymbol\beta$ & A vector: a list of several numbers handled together. \\
+$\sum_{j=1}^{J}$ & Add the terms for $j = 1, 2, \ldots, J$. \\
+$\in$ & ``Belongs to'', e.g.\ a minute belonging to a day. \\
+$\approx$ & Approximately equal to. \\
+$<$,\ $>$,\ $\le$,\ $\ge$ & Less than, greater than, at most, at least. \\
+$\sim$ & ``Is distributed as'': the quantity on the left follows the probability distribution on the right. \\
+$\mid$ & ``Given'', or ``conditional on''. \\
+$P(A \mid B)$ & Probability of $A$, given the information $B$. \\
+$\Var(X)$,\ $\SD(X)$ & Variance and standard deviation of $X$. \\
+$[L,\,U]$ after an estimate & Lower and upper ends of an interval. For parameters in this guide, a 95\% posterior credible interval. \\
+\end{reftable}
+
+\subsection{Response and time}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$t$ & Day number on the gap-free calendar, $t = 1, \ldots, T$. \\
+$T$ & Number of calendar days, $T = 1{,}440$. \\
+$y_t$ & Electricity used on day $t$, in kWh. Observed on 1,417 days; imputed by the model on the other 23. \\
+$g(\cdot)$ & Transformation applied to $y_t$ before modelling. \\
+$z_t$ & The response on the modelling scale. Identity model: $z_t = y_t$. Log model: $z_t = \log y_t$. \\
+$\bar t$ & The average day index. Centring time at $\bar t$ makes the trend term zero at the middle of the record and reduces the correlation between the trend and the intercept. \\
+\end{reftable}
+
+The headline model M7 uses the identity transformation, so $z_t = y_t$ and all
+of its coefficients are in kWh.
+
+\subsection{The calendar prediction}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$\mathbf{x}_t$ & The known calendar inputs for day $t$: a constant 1, centred time, the sine and cosine terms, and six weekday indicators. \\
+$\boldsymbol\beta$ & All regression coefficients collected into one vector. \\
+$^{\top}$ & Transpose. $\mathbf{x}_t^{\top}\boldsymbol\beta$ multiplies each input by its coefficient and adds the results, giving the calendar prediction for day $t$. \\
+$\beta_0$ & Intercept: expected use on a Monday at the middle of the record, before the seasonal waves are added (the waves average to zero over a year). It is not, by itself, the average-day level. \\
+$\beta_1$ & Trend: change in daily use per year, because $(t-\bar t)/365$ measures time in years. \\
+$365$ & Length of the yearly cycle in days, as required by the project brief. \\
+\end{reftable}
+
+The reported \emph{average-day level at the record midpoint} adds the average
+weekday offset to the intercept. For M7 it is $25.96\kwh$, while the
+Monday-reference intercept itself has posterior mean $23.82\kwh$.
+
+\subsection{Annual harmonics}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$J$ & Number of harmonic pairs (one sine plus one cosine each). \\
+$j$ & Harmonic number, $j = 1, \ldots, J$. \\
+$j = 1$ & One full wave every 365 days: $\sin(2\pi t/365)$ and $\cos(2\pi t/365)$. \\
+$j = 2$ & Two waves every 365 days (one every 182.5 days): $\sin(4\pi t/365)$ and $\cos(4\pi t/365)$. Added to the first harmonic, it makes the yearly curve asymmetric. \\
+$a_j$ & Coefficient on the sine term of harmonic $j$, in kWh. \\
+$b_j$ & Coefficient on the cosine term of harmonic $j$, in kWh. \\
+$\pi$ & The constant $3.14159\ldots$ \\
+$\sin(\cdot)$,\ $\cos(\cdot)$ & Smooth periodic functions. Dividing $2\pi j t$ by 365 makes harmonic $j$ repeat $j$ times a year. \\
+\end{reftable}
+
+Each sine--cosine pair can be rewritten as a single wave with a size and a
+timing:
+\begin{equation}
+a_j\sin(\omega_j t) + b_j\cos(\omega_j t) = A_j\cos(\omega_j t - \psi_j),
+\label{eq:amp}
+\end{equation}
+\begin{equation}
+\omega_j = \frac{2\pi j}{365}, \qquad
+A_j = \sqrt{a_j^2 + b_j^2}, \qquad
+\psi_j = \atantwo(a_j,\, b_j).
+\label{eq:phase}
+\end{equation}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$\omega_j$ & Angular frequency of harmonic $j$, in radians per day. \\
+$A_j$ & Amplitude: how far that wave rises above (and falls below) zero, in kWh. \\
+$2A_j$ & Peak-to-trough swing of that wave on its own. \\
+$\psi_j$ & Phase: sets the date of the wave's peak. \\
+$\atantwo(a,\, b)$ & The angle whose sine and cosine are proportional to $a$ and $b$; using the signs of both puts it in the correct quadrant. \\
+$\sqrt{\cdot}$ & Square root. \\
+\end{reftable}
+
+The full seasonal curve is the sum of both waves, so its total range is
+generally not $2A_1 + 2A_2$.
+
+\subsection{Weekday effects}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$\dow_t$ & Day of the week of day $t$ (1 = Monday, \ldots, 7 = Sunday). \\
+$k$ & A weekday from Tuesday ($k = 2$) to Sunday ($k = 7$). \\
+$\delta_k$ & How much weekday $k$ differs from Monday, in kWh. \\
+$\mathbf{1}\{\dow_t = k\}$ & Indicator: equals 1 if day $t$ is weekday $k$, and 0 otherwise. \\
+\end{reftable}
+
+Monday has no coefficient of its own; it is the reference day. For reporting,
+the seven weekday values are re-centred on their weekly mean, which answers the
+more natural question: how far is this weekday above or below an average day?
+
+\subsection{The leftover: an autoregressive error}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$\varepsilon_t$ & Residual (leftover) on day $t$: actual use minus the calendar prediction. \\
+$p$ & Autoregressive order: how many previous days' residuals feed into today. \\
+$\ell$ & Lag, $\ell = 1, \ldots, p$: how many days back. \\
+$\phi_\ell$ & Persistence: the fraction of the residual from $\ell$ days ago that carries into today. \\
+$\eta_t$ & Innovation: the genuinely new surprise on day $t$, after the carry-over from earlier days is accounted for. \\
+\end{reftable}
+
+For M7, $p = 1$, so the error equation is
+\begin{equation}
+\varepsilon_t = \phi\,\varepsilon_{t-1} + \eta_t .
+\label{eq:ar1}
+\end{equation}
+Part of yesterday's unexplained high or low use carries into today, and then a
+new surprise is added. The fitted $\phi$ is about $0.375$, so the memory fades
+within a few days.
+
+\subsection{Heavy-tailed surprises}
+
+Each new surprise follows a Student-$t$ distribution rather than a normal one:
+\begin{equation}
+\eta_t \sim t_\nu(0,\, \sigma^2).
+\label{eq:t}
+\end{equation}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$t_\nu(0,\sigma^2)$ & Student-$t$ distribution centred at 0, with scale $\sigma$ and $\nu$ degrees of freedom. \\
+$\sigma$ & Innovation scale: the typical size of a new one-day surprise, in kWh. \\
+$\sigma^2$ & The scale squared. \\
+$\nu$ & Degrees of freedom: controls how heavy the tails are. A small $\nu$ allows more extreme days; as $\nu$ grows, the distribution approaches a normal distribution. \\
+\end{reftable}
+
+Strictly, $\sigma$ is a \emph{scale}, not the standard deviation. When
+$\nu > 2$,
+\begin{equation}
+\SD(\eta_t) = \sigma\sqrt{\frac{\nu}{\nu-2}} .
+\label{eq:tsd}
+\end{equation}
+The project output labels $\sigma$ the ``one-step innovation sd''; ``innovation
+scale'' is the precise name.
+
+The sampler writes the Student-$t$ as a normal distribution whose variance
+changes from day to day:
+\begin{equation}
+\eta_t \mid \lambda_t \sim N\!\left(0,\ \frac{\sigma^2}{\lambda_t}\right),
+\qquad
+\lambda_t \sim \GammaDist\!\left(\frac{\nu}{2},\ \frac{\nu}{2}\right).
+\label{eq:mix}
+\end{equation}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$N(\mu,\, v)$ & Normal distribution with mean $\mu$ and variance $v$. \\
+$\lambda_t$ & Hidden weight for day $t$. Near 1 on an ordinary day; small on an extreme day. \\
+$\sigma^2/\lambda_t$ & Variance of day $t$'s surprise. A small $\lambda_t$ makes it large, so an unusual day is absorbed without inflating the uncertainty of every ordinary day. \\
+$\GammaDist(\alpha,\, \beta)$ & Gamma distribution with shape $\alpha$ and rate $\beta$. With $\alpha = \beta = \nu/2$ the weights average exactly 1. \\
+\end{reftable}
+
+Averaging over $\lambda_t$ gives back the Student-$t$ distribution in
+equation~\eqref{eq:t}.
+
+\subsection{Missing days}
+
+The 23 missing values of $y_t$ are neither set to zero nor deleted. Their $z_t$
+and $\varepsilon_t$ are sampled from the model along with everything else. This
+keeps the day-to-day error link intact across gaps and carries the uncertainty
+about those days into the parameter estimates and the forecasts.
+
+% ---------------------------------------------------------------------------
+\section{The headline model, M7}
+
+The model behind the main conclusions is
+\begin{align}
+y_t &= \mathbf{x}_t^{\top}\boldsymbol\beta + \varepsilon_t, \label{eq:m7}\\
+\mathbf{x}_t^{\top}\boldsymbol\beta
+  &= \beta_0 + \beta_1\,\frac{t-\bar t}{365}
+   + a_1\sin\!\left(\frac{2\pi t}{365}\right) + b_1\cos\!\left(\frac{2\pi t}{365}\right) \notag\\
+  &\qquad + a_2\sin\!\left(\frac{4\pi t}{365}\right) + b_2\cos\!\left(\frac{4\pi t}{365}\right)
+   + \sum_{k=2}^{7}\delta_k\,\mathbf{1}\{\dow_t = k\}, \label{eq:m7mean}\\
+\varepsilon_t &= \phi\,\varepsilon_{t-1} + \eta_t,
+  \qquad \eta_t \sim t_\nu(0,\sigma^2). \label{eq:m7err}
+\end{align}
+In short: the response is measured directly in kWh, and the model has a centred
+linear trend, $J = 2$ annual harmonic pairs, six weekday indicators with Monday
+as the reference, an AR(1) residual, and Student-$t$ innovations.
+
+M7 was chosen as the headline model because it was the best of the seven
+candidates on the held-out 12-month forecast, and its predictive intervals were
+much sharper and better calibrated than those of the log-scale versions. It is
+the best model in this candidate set, not a claim that no better model exists.
+
+% ---------------------------------------------------------------------------
+\section{Priors}
+
+Because the model is Bayesian, every unknown parameter gets a probability
+distribution before the data are seen. For M7:
+\begin{align}
+\beta_0 &\sim N(0,\ 100^2), \label{eq:prior-b0}\\
+\beta_r &\sim N(0,\ 40^2) \quad \text{for every other regression coefficient } r, \label{eq:prior-b}\\
+\sigma &\sim \text{half-}t_3(0,\ 20), \label{eq:prior-sigma}\\
+\phi &\sim \Unif(-1,\ 1), \label{eq:prior-phi}\\
+\nu - 2 &\sim \Expo(\text{mean } 10). \label{eq:prior-nu}
+\end{align}
+
+\begin{reftable}{0.3}{Prior}{Meaning}
+$N(0,\, 100^2)$ and $N(0,\, 40^2)$ & Normal distributions centred at 0 with standard deviations 100 and 40 kWh. They are deliberately wide, so the data, not the prior, determine the coefficients. \\
+$\text{half-}t_3(0,\, 20)$ & A Student-$t$ with 3 degrees of freedom and scale 20, folded at zero. It keeps $\sigma > 0$ while allowing a broad range of values. \\
+$\Unif(-1,\, 1)$ & Every value of $\phi$ between $-1$ and $1$ is equally likely beforehand. $-1 < \phi < 1$ is the stationary region, where shocks fade instead of growing without bound. \\
+$\Expo(\text{mean } 10)$ on $\nu - 2$ & Forces $\nu > 2$, so the variance of the Student-$t$ exists, while still allowing heavy tails. \\
+Missing $y_t$ & No separate prior: their distribution is implied by the regression and the AR process. \\
+\end{reftable}
+
+The log-scale candidates use smaller prior scales because their coefficients
+are much smaller: 5 for the intercept, 2 for the other coefficients, and 1 for
+the half-$t$ scale.
+
+% ---------------------------------------------------------------------------
+\section{Candidate models and why they were compared}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}lclll@{}}
+\toprule
+\textbf{Model} & $\boldsymbol{J}$ & \textbf{Error process} & \textbf{Scale} & \textbf{What the comparison tests} \\
+\midrule
+M1 & 1 & independent, Gaussian & log & naive baseline \\
+M2 & 1 & AR(1), Student-$t$ & log & day-to-day memory and heavy tails \\
+M3 & 2 & AR(1), Student-$t$ & log & the required second harmonic \\
+M4 & 3 & AR(1), Student-$t$ & log & a more flexible yearly curve \\
+M5 & 2 & AR(2), Student-$t$ & log & longer residual memory \\
+M6 & 2 & AR(1), Gaussian & log & the value of heavy tails \\
+\textbf{M7} & 2 & AR(1), Student-$t$ & kWh & whether the log transform helps \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+WAIC, an in-sample estimate of predictive accuracy, preferred M5. The held-out
+forecasts rejected AR(2): the extra lag was fitting long absence blocks that did
+not generalise. The held-out year also showed that modelling kWh directly beat
+the log transform. Forecast performance, not WAIC alone, therefore decided the
+headline model.
+
+Adding a third harmonic improved the log-scale model, but a three-harmonic
+model on the kWh scale was not fitted. That remains an important extension.
+
+% ---------------------------------------------------------------------------
+\section{How the posterior was computed and checked}
+
+The posterior distribution was computed with a purpose-built Markov chain Monte
+Carlo (MCMC) sampler:
+\begin{itemize}[leftmargin=*]
+\item Gibbs updates for the regression coefficients, the innovation scale, the
+  hidden weights $\lambda_t$, and the missing responses;
+\item random-walk Metropolis updates for the AR coefficients and for
+  $\log(\nu - 2)$;
+\item exact stationary initialisation of the first AR residuals;
+\item four chains of 40,000 iterations for the full-data fits, with the first
+  10,000 of each discarded as burn-in and every fifth remaining iteration kept,
+  giving 24,000 posterior draws.
+\end{itemize}
+
+\begin{reftable}{0.2}{Check}{Meaning and result}
+$\widehat R$ & Compares the spread within chains with the spread between chains. Values near 1 (target below 1.01) indicate convergence. M7's worst value: 1.0069. \\
+ESS & Effective sample size: how many independent draws the correlated MCMC draws are worth (target above 400). M7's smallest bulk ESS: 1,072. \\
+Simulation check & On data simulated with known parameters, 14 of 15 parameters fell inside their 95\% credible intervals, as expected. \\
+\end{reftable}
+
+% ---------------------------------------------------------------------------
+\section{Forecast equations}
+
+For one posterior draw, the forecast for $h$ days after the origin $T$ is built
+as
+\begin{align}
+\mu_{T+h} &= \mathbf{x}_{T+h}^{\top}\boldsymbol\beta, \label{eq:fc-mu}\\
+\varepsilon_{T+h} &= \phi\,\varepsilon_{T+h-1} + \eta_{T+h}, \label{eq:fc-eps}\\
+y_{T+h} &= \mu_{T+h} + \varepsilon_{T+h}. \label{eq:fc-y}
+\end{align}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$T$ & Forecast origin: the last day whose data are used. \\
+$h$ & Horizon: how many days ahead, $h = 1, 2, \ldots$ \\
+$\mu_{T+h}$ & Calendar prediction for day $T+h$. \\
+$\varepsilon_{T+h}$ & Simulated future residual, built forward one day at a time from the last known residual. \\
+$y_{T+h}$ & Simulated future consumption. \\
+\end{reftable}
+
+Repeating this for every posterior draw gives the posterior predictive
+distribution. It includes the uncertainty in the coefficients and in $\phi$,
+$\sigma$, and $\nu$, the future innovations, and their propagation through the
+AR process.
+
+With the parameters held fixed and an innovation variance $v_\eta$, the
+forecast variance of the residual $h$ days ahead is
+\begin{equation}
+\Var(\varepsilon_{T+h} \mid \varepsilon_T) = v_\eta \sum_{r=0}^{h-1}\phi^{2r},
+\qquad
+v_\eta = \sigma^2\,\frac{\nu}{\nu-2}.
+\label{eq:fc-var}
+\end{equation}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$v_\eta$ & Variance of one innovation $\eta_t$. \\
+$r$ & How many days before the target day a shock occurred. \\
+$\phi^{2r}$ & Contribution of that shock to the forecast variance, relative to a same-day shock. Each day of delay multiplies a shock's effect by $\phi$, and so its variance by $\phi^2$. \\
+\end{reftable}
+
+As $h$ grows, the forecast standard deviation relative to the one-day-ahead
+value approaches
+\begin{equation}
+\frac{1}{\sqrt{1-\phi^2}} .
+\label{eq:ceiling}
+\end{equation}
+With $\phi \approx 0.375$ the ceiling is about 1.08. Knowing the latest residual
+therefore makes near-term intervals about 8\% narrower, and almost all of that
+advantage is gone within four to seven days.
+
+% ---------------------------------------------------------------------------
+\section{How the forecasts were evaluated}
+
+The final twelve months (1 December 2009 to 25 November 2010) were held out and
+never used to estimate the parameters.
+\begin{itemize}[leftmargin=*]
+\item \textbf{Single origin:} forecast the whole held-out year from 30 November
+  2009.
+\item \textbf{Rolling origin:} forecast 1 to 60 days ahead from many starting
+  days in the held-out year, each time updating the current residual with the
+  newly observed consumption.
+\end{itemize}
+
+\begin{reftable}{0.3}{Score}{Meaning}
+Log predictive density (LPD) & Rewards a forecast distribution that is both sharp and centred in the right place. Higher is better. \\
+CRPS & Continuous ranked probability score: forecast error that uses the whole forecast distribution, in kWh. Lower is better. \\
+Coverage & Share of actual values inside the nominal 50\% or 95\% predictive interval. Good calibration means coverage close to the nominal percentage. \\
+PIT & Probability integral transform: the forecast's cumulative probability at the actual value. Roughly uniform PIT values indicate good calibration. \\
+\end{reftable}
+
+M7's rolling 95\% intervals covered 94.5\% of actual values one day ahead and
+95.2\% seven days ahead. Their average width rose from about $28.9\kwh$ one day
+ahead to about $31.4\kwh$ seven days ahead and then stayed almost flat.
+
+% ---------------------------------------------------------------------------
+\section{Main findings from M7}
+
+\subsection{Overall level and trend}
+
+All intervals in this section are 95\% posterior credible intervals.
+
+\begin{reftable}{0.5}{Quantity}{Posterior mean [95\% interval]}
+Average-day level at the record midpoint & \ci{25.96}{25.41}{26.50} kWh/day \\
+Trend & \ci{-0.186}{-0.667}{0.292} kWh/year \\
+Trend as a percentage of the level & \ci{-0.72}{-2.57}{1.13} \% per year \\
+$P(\text{slope} < 0 \mid \text{data})$ & $0.775$ \\
+\end{reftable}
+
+The interval for the trend includes zero, so there is no conclusive long-term
+rise or fall.
+
+\subsection{Yearly pattern}
+
+\begin{reftable}{0.5}{Quantity}{Posterior mean [95\% interval]}
+First-harmonic amplitude $A_1$ & \ci{8.08}{7.31}{8.85} kWh \\
+First-harmonic peak-to-trough swing $2A_1$ & \ci{16.15}{14.62}{17.71} kWh \\
+First-harmonic peak date & about 14 January\ \ [9 January, 20 January] \\
+Second-harmonic amplitude $A_2$ & \ci{2.43}{1.68}{3.19} kWh \\
+Amplitude ratio $A_2/A_1$ & \ci{0.302}{0.204}{0.405} \\
+$P(A_2 > 0.15\,A_1 \mid \text{data})$ & $0.999$ \\
+Full seasonal range (maximum minus minimum) & \ci{18.25}{16.48}{20.06} kWh \\
+\end{reftable}
+
+The second harmonic clearly matters: it sharpens the winter peak and makes the
+summer low longer and flatter.
+
+\subsection{Weekly pattern}
+
+Deviations from the weekly mean, in kWh per day:
+
+\begin{reftable}{0.5}{Day}{Posterior mean [95\% interval]}
+Monday & \ci{-2.15}{-2.91}{-1.40} \\
+Tuesday & \ci{-0.41}{-1.17}{0.37} \\
+Wednesday & \ci{-0.10}{-0.89}{0.69} \\
+Thursday & \ci{-2.75}{-3.51}{-1.99} \\
+Friday & \ci{-1.12}{-1.88}{-0.36} \\
+Saturday & \ci{+3.50}{2.67}{4.33} \\
+Sunday & \ci{+3.02}{2.21}{3.85} \\
+Weekend minus weekday & \ci{4.56}{3.71}{5.42} \\
+$P(\text{weekend} > \text{weekday} \mid \text{data})$ & $1.0000$ \\
+\end{reftable}
+
+\subsection{Error process}
+
+\begin{reftable}{0.5}{Quantity}{Posterior mean [95\% interval]}
+Innovation scale $\sigma$ & \ci{5.59}{5.25}{5.94} kWh \\
+AR coefficient $\phi$ & \ci{0.375}{0.323}{0.426} \\
+Degrees of freedom $\nu$ & \ci{5.81}{4.38}{7.81} \\
+Long-run to one-step forecast sd ratio, $1/\sqrt{1-\phi^2}$ & \ci{1.079}{1.057}{1.105} \\
+\end{reftable}
+
+These values show modest short-term persistence and clearly heavier tails than
+a normal distribution.
+
+\subsection{Unusual days and periods}
+
+The day-by-day check uses the posterior predictive p-value
+\begin{equation}
+p_t = P\!\left(y_t^{\mathrm{rep}} \le y_t \mid \mathbf{y}\right).
+\label{eq:ppp}
+\end{equation}
+
+\begin{reftable}{0.2}{Symbol}{Meaning}
+$y_t^{\mathrm{rep}}$ & A replicate of day $t$ simulated from the fitted model. \\
+$\mathbf{y}$ & The full observed data set. \\
+$p_t$ & Probability that a replicate is no larger than what actually happened. Near 0: unusually low use. Near 1: unusually high use. \\
+\end{reftable}
+
+\begin{itemize}[leftmargin=*]
+\item The one-day-ahead check flagged 31 days in the extreme 1\% tails: 23
+  unusually high and 8 unusually low, against about 14 of each expected by
+  chance.
+\item A one-day-ahead check can miss a sustained absence, because the AR(1)
+  term adapts after the first day or two.
+\item A separate check on 14-day average consumption found 13 sustained unusual
+  episodes.
+\item The clearest low periods look like summer vacancies; the high winter
+  episodes are consistent with cold spells.
+\end{itemize}
+These are interpretations based on timing and load shape, not on measured
+occupancy or weather.
+
+% ---------------------------------------------------------------------------
+\section{What the model tells us in practice}
+
+\begin{itemize}[leftmargin=*]
+\item Winter versus summer is the largest predictable difference.
+\item This household uses more electricity on weekends than on weekdays.
+\item There is not enough evidence to plan around a long-term rise or fall.
+\item Yesterday's consumption improves forecasts mainly for the next few days.
+\item Beyond about a week, the forecast is effectively a seasonal-plus-weekday
+  distribution.
+\item Single-day forecasts stay wide because one household's behaviour is
+  inherently variable.
+\item Plan with forecast intervals; a point forecast alone hides most of the
+  relevant uncertainty.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\section{Limitations}
+
+\begin{itemize}[leftmargin=*]
+\item This is one household, not a population or an electricity grid. The
+  results should not be generalised without new data.
+\item There is no temperature variable. The harmonics capture average weather
+  for the time of year but cannot predict a specific cold snap.
+\item There is no occupancy variable. Vacations are treated as outliers rather
+  than as a separate away-from-home state.
+\item Weekday effects are additive and constant, although the exploratory work
+  shows a larger weekend premium in winter.
+\item The innovation scale is constant, although residual variation is larger
+  in winter than in summer.
+\item Trend and season are mildly confounded, because the record is just short
+  of four complete years.
+\item The required 365-day period ignores leap-year drift.
+\item Conditional WAIC is not fully reliable for choosing forecasting models
+  with autocorrelated data; the held-out results are more trustworthy.
+\item A simple day-of-year average (``climatology'') beat every Bayesian
+  candidate on the single-origin one-year forecast. Part of its advantage comes
+  from similar August absences in the training and test years, but it also
+  shows that a two-harmonic yearly curve is not flexible enough for the best
+  long-range forecasts.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\section{Recommended next steps}
+
+\begin{enumerate}[leftmargin=*]
+\item Add daily Paris-area temperature; this is the most valuable missing
+  predictor.
+\item Fit kWh-scale models with more harmonics, $J = 3$ through $J = 6$, since
+  only the log-scale three-harmonic model was tested.
+\item Compare versions with and without the linear trend for long-horizon
+  forecasts.
+\item Let the innovation scale vary by season, so winter can be more variable
+  than summer.
+\item Let the weekend effect depend on the season.
+\item Consider a hidden home/away state for multi-week absences.
+\item Include the day-of-year climatology in the same rolling-origin evaluation
+  as the Bayesian candidates.
+\item Use a rolling origin on every day, rather than every third day, and score
+  all horizons on a common set of target dates.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section{Distinctions that are easy to mix up}
+
+\begin{reftable}{0.3}{Distinction}{Explanation}
+Coefficient vs.\ reported effect & $\delta_k$ is measured relative to Monday; the reported weekday profile is re-centred on the weekly mean. \\
+Residual vs.\ innovation & $\varepsilon_t$ includes carry-over from earlier days; $\eta_t$ is only the new one-day shock. \\
+Credible vs.\ predictive interval & A credible interval describes uncertainty about a parameter; a predictive interval describes uncertainty about a future observation and is much wider. \\
+Innovation scale vs.\ overall variability & $\sigma$ governs one new shock; AR persistence makes longer-run residual variability larger. \\
+In-sample fit vs.\ forecast skill & WAIC summarises fit to the data used for estimation; the held-out year measures forecasting directly. \\
+Best candidate vs.\ best possible model & M7 is the headline model among M1--M7; the climatology result and the untested kWh models show clear room for improvement. \\
+\end{reftable}
+
+% ---------------------------------------------------------------------------
+\section{Where to verify each part}
+
+\begin{reftable}{0.45}{Topic}{File}
+Core equations, sampler, forecasting, diagnostics & \code{src/model.py} \\
+Candidate models and WAIC & \code{src/03\_fit\_models.py} \\
+Held-out evaluation & \code{src/04\_holdout.py} \\
+Derived effects and anomaly checks & \code{src/05\_derived.py} \\
+Posterior summaries & \code{results/03\_convergence.txt} \\
+WAIC comparison & \code{results/03\_waic.txt} \\
+Forecast results & \code{results/04\_holdout.txt} \\
+Interpreted posterior quantities & \code{results/05\_derived.txt} \\
+Full technical narrative & \code{report.tex} \\
+\end{reftable}
+
+\end{document}

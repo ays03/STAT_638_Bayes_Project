@@ -79,6 +79,7 @@ electricity demand and its uncertainty.
 
 ### Model Guide
 
-See [MODEL_GUIDE.md](MODEL_GUIDE.md) for a plain-language explanation of the
+See [model_guide.pdf](model_guide.pdf) for a plain-language explanation of the
 complete model, every equation and symbol, priors, fitting and validation,
-forecasting, results, limitations, and recommended next steps.
+forecasting, results, limitations, and recommended next steps. The LaTeX source
+is [model_guide.tex](model_guide.tex).
