@@ -1,0 +1,309 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue]{hyperref}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+\captionsetup{font=small,labelfont=bf}
+\setlist{itemsep=2pt,parsep=0pt,topsep=3pt}
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small STAT 638 Project 17 --- frequentist counterpart}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\newcommand{\kwh}{\,\mathrm{kWh}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\title{\vspace{-1.2cm}\textbf{A Frequentist Treatment of the Same Project}\\[2pt]
+\large Household electricity demand, estimated by maximum likelihood}
+\author{Project 17}
+\date{\today}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\begin{abstract}
+\noindent
+The assigned analysis is Bayesian. This note keeps the same household, the same
+daily series, the same regression, and the same six questions, and states how
+each answer is obtained from a maximum-likelihood fit instead of a posterior.
+The headline specification is unchanged: two annual harmonics, a linear trend,
+day-of-week effects, and an AR(1) error with Student-$t$ innovations, on the
+kWh scale. With $1{,}417$ days and a weak prior, the point estimates sit next
+to the posterior means already reported. What changes is the language of the
+claim: a confidence interval and a $p$-value, rather than a posterior
+probability.
+\end{abstract}
+
+\section{What stays the same}
+
+The data preparation does not move. One-minute power from the UCI
+\emph{Individual Household Electric Power Consumption} series is converted to
+daily energy by summing \code{Global\_active\_power} and dividing by $60$. A
+day is kept only when at least 95\% of its $1{,}440$ minutes are observed.
+That leaves $1{,}417$ usable days on a gap-free calendar of $T = 1{,}440$
+days, from 17 December 2006 through 25 November 2010, with $23$ days retained
+as missing so that the autoregression is defined on every date.
+
+The mean structure is the one the brief requires. For a response $z_t = g(y_t)$,
+with $g$ either the identity or the logarithm,
+\begin{align}
+z_t &= \mathbf{x}_t^{\top}\boldsymbol\beta + \varepsilon_t, \label{eq:mean}\\
+\mathbf{x}_t^{\top}\boldsymbol\beta
+ &= \beta_0
+  + \beta_1 \frac{t - \bar t}{365}
+  + \sum_{j=1}^{J}\left[a_j \sin\frac{2\pi j t}{365} + b_j \cos\frac{2\pi j t}{365}\right]
+  + \sum_{k=2}^{7}\delta_k \mathbf{1}\{\mathrm{dow}_t = k\}, \label{eq:design}\\
+\varepsilon_t &= \phi\,\varepsilon_{t-1} + \eta_t,
+\qquad
+\eta_t \sim t_\nu(0,\sigma^2). \label{eq:ar}
+\end{align}
+Monday is the baseline day. The trend is centred at $\bar t$, so $\beta_0$ is
+the level at the midpoint of the record. The harmonics use raw $t$, as
+mandated. The specification that the holdout selected, called M7 in the main
+report, is $J = 2$, AR(1), $t$ innovations, and $g$ the identity, so $z_t$ is
+daily consumption in kWh.
+
+The twelve-month holdout is also unchanged. Models are fitted on data through
+30 November 2009 ($1{,}072$ observed days) and scored on the final $345$
+observed days. Log score, CRPS, and empirical coverage do not depend on a
+posterior. They remain the right way to decide whether a specification
+forecasts.
+
+\section{What the fit is}
+
+There is no prior. The parameters
+$(\boldsymbol\beta, \phi, \sigma, \nu)$ are fixed unknown constants, and the
+fit is the value that maximises the likelihood of the observed days.
+
+For Gaussian innovations the conditional likelihood, after the AR(1)
+quasi-difference
+$\tilde z_t = z_t - \phi z_{t-1}$ and
+$\tilde{\mathbf{x}}_t = \mathbf{x}_t - \phi \mathbf{x}_{t-1}$,
+is ordinary weighted least squares in $\boldsymbol\beta$. In R the Gaussian
+special case is
+\begin{center}
+\code{arima(y, order = c(1, 0, 0), xreg = X, method = "ML")}.
+\end{center}
+The exact likelihood adds the stationary density of the first residual,
+with variance $\sigma^2/(1-\phi^2)$. That is the same initial-error term the
+Gibbs sampler uses; here it enters the likelihood once, at the maximum, rather
+than at every draw.
+
+Student-$t$ innovations use the same normal scale mixture as the sampler,
+\[
+\eta_t \mid \lambda_t \sim N\!\left(0,\ \sigma^2/\lambda_t\right),
+\qquad
+\lambda_t \sim \mathrm{Gamma}(\nu/2,\ \nu/2),
+\]
+but as an EM algorithm.
+\begin{itemize}
+\item \textbf{E-step.} At the current parameters,
+$\hat\lambda_t = (\nu+1)/(\nu + \eta_t^2/\sigma^2)$.
+A small weight is a day the likelihood downweights. These weights are the
+conditional expectations of the latent scales, evaluated once at the maximum
+likelihood estimate.
+\item \textbf{M-step.} Weighted least squares for $\boldsymbol\beta$, then
+updates for $\sigma^2$, $\phi$, and $\nu$.
+\end{itemize}
+The algorithm stops at one point
+$(\hat{\boldsymbol\beta},\hat\phi,\hat\sigma,\hat\nu)$ and one set of weights
+$\hat\lambda_t$.
+
+The $23$ missing days are integrated out of the likelihood, by a Kalman filter
+or by EM imputation of their conditional expectations. A parametric bootstrap
+then carries the uncertainty in those days into the standard errors. The
+Bayesian fit imputes them inside the sampler, so that uncertainty is already
+inside every posterior draw.
+
+Standard errors come from the observed Fisher information at the maximum
+likelihood estimate. A function of the coefficients --- an amplitude, a phase,
+the weekend contrast, a percent-per-year slope, the horizon factor
+$1/\sqrt{1-\phi^2}$ --- is handled by the delta method. When that approximation
+is poor, as it is for an amplitude near zero or a phase near a branch cut, the
+interval is read off a parametric bootstrap instead.
+
+\section{The six questions}
+
+The numerical anchors below are the posterior summaries already computed for
+M7. Under a weak prior they are a close guide to the maximum likelihood
+estimates. Each paragraph says what the frequentist report would quote.
+
+\subsection{Q1 --- variation over the study period}
+
+The midpoint level, the seasonal range, and the one-step innovation standard
+deviation are maximum likelihood estimates, with confidence intervals from the
+information matrix or the bootstrap. In the Bayesian fit those figures are a
+midpoint level of $25.96\kwh$/day, a full seasonal range of $18.25\kwh$/day,
+a weekly contribution of about $4.56\kwh$, and an innovation standard
+deviation of $5.59\kwh$. The ordering is the same one the exploratory $R^2$
+decomposition already gave: the first harmonic carries almost all of the
+systematic variance ($R^2$ increment $0.36$), day of week adds $0.05$, and
+the trend adds $0.01$.
+
+The Newey--West intervals in the exploratory note are a descriptive frequentist
+summary that ignores the AR($t$) structure. The model-based analysis replaces
+them with intervals from the fitted autoregression.
+
+\subsection{Q2 --- long-term trend}
+
+The slope estimate is $-0.186\kwh$/year. The 95\% interval already computed,
+$[-0.667,\ +0.292]$, implies a standard error of about $0.245$, a $z$-statistic
+of about $-0.76$, and a two-sided $p$-value for $H_0:\beta_1 = 0$ of about
+$0.45$. The interval covers zero. Four years do not establish a trend, and the
+implied change over the whole record is under $3\%$ of the mean level.
+
+The Bayesian report also quotes
+$\Pr(\beta_1 < 0 \mid \mathrm{data}) = 0.775$. That number is the posterior
+mass below zero. With a flat prior and a normal sampling distribution it is
+$\Phi(0.76) \approx 0.78$, which is why the two analyses look so similar. The
+frequentist summary stops at the estimate, the confidence interval, and the
+test: the point estimate is negative, and a test of a zero slope does not
+reject at conventional levels.
+
+\subsection{Q3 --- annual pattern, and the second harmonic}
+
+Amplitude and peak date are
+\[
+\hat A_j = \sqrt{\hat a_j^2 + \hat b_j^2},
+\qquad
+\widehat{\mathrm{phase}}_j = \mathrm{atan2}(\hat a_j,\hat b_j),
+\]
+with delta-method or bootstrap intervals. In the Bayesian fit the first
+harmonic has amplitude $8.08\kwh$ and peaks on 14 January; the second has
+amplitude $2.43\kwh$, and the amplitude ratio is $0.30$.
+
+Harmonic 2 against harmonic 1 is a likelihood-ratio test on two extra
+coefficients, referred to $\chi^2_2$, together with AIC. The comparison is
+nested and regular. The substantive reason to keep the second harmonic is
+unchanged: it deepens and delays the summer trough and sharpens the winter
+peak. The Bayesian statement
+$\Pr(A_2 > 0.15\,A_1 \mid \mathrm{data}) = 0.999$
+becomes a confidence interval for the ratio that lies well above $0.15$.
+
+\subsection{Q4 --- weekly pattern}
+
+Each day-of-week deviation has a Wald interval from
+$\widehat{\mathrm{Var}}(\hat{\boldsymbol\beta})$. The weekend-minus-weekday
+contrast is the linear combination $\mathbf{c}^{\top}\hat{\boldsymbol\beta}$,
+with standard error
+$\sqrt{\mathbf{c}^{\top}\widehat{\mathrm{Var}}(\hat{\boldsymbol\beta})\,\mathbf{c}}$.
+The Bayesian fit puts Saturday and Sunday about $3.5\kwh$ and $3.0\kwh$ above
+the weekly mean, and the weekend-minus-weekday contrast at $4.56\kwh$/day
+with interval $[3.71,\ 5.42]$. The posterior probability that the weekend
+exceeds the weekday is $1$. The frequentist report is the same contrast, a
+confidence interval lying entirely above zero, and a very small $p$-value for
+a zero contrast.
+
+\subsection{Q5 --- accuracy, and how uncertainty grows with the horizon}
+
+The $h$-step point forecast plugs the maximum likelihood estimate into the
+same recursion the sampler uses,
+\[
+\hat z_{T+h}
+ = \mathbf{x}_{T+h}^{\top}\hat{\boldsymbol\beta}
+ + \hat\phi\,\hat\varepsilon_{T+h-1},
+\]
+with future errors propagated from the last observed residual. For Gaussian
+innovations a plug-in prediction interval uses the scale
+\[
+\hat\sigma\sqrt{\sum_{j=0}^{h-1}\hat\phi^{2j}}.
+\]
+For $t$ innovations the interval uses the quantiles of $t_{\hat\nu}$ on that
+same scale.
+
+With $\hat\phi = 0.375$ the width rises by about 8\% and then stops. The
+ceiling is the stationary factor $1/\sqrt{1-\hat\phi^2} \approx 1.08$. In the
+Bayesian fit the 95\% predictive interval widens from $28.9\kwh$ at one day
+ahead to about $31\kwh$ by day seven, and the empirical coverage is $94.5\%$
+at $h = 1$ and $95.2\%$ at $h = 7$. The frequentist calculation reproduces
+that shape. A plug-in interval treats
+$(\hat{\boldsymbol\beta},\hat\phi,\hat\sigma,\hat\nu)$ as known, so it is
+slightly narrow. A parametric bootstrap of whole forecast paths puts the
+estimation error back in. Knowing yesterday's consumption still buys only a
+few days of sharper intervals. Beyond about a week the forecast is the
+seasonal-plus-weekly mean.
+
+\subsection{Q6 --- periods the mean does not explain}
+
+One-step anomalies are tails of the fitted innovation distribution at the
+maximum likelihood estimate: a day is flagged when its conditional residual is
+extreme under $t_{\hat\nu}(0,\hat\sigma^2)$. A one-step residual cannot see a
+level shift that the AR(1) has already absorbed, so a sustained anomaly is
+still judged by a block statistic. The same 14-day mean used in the main
+report is referred to the distribution of that mean under the fitted
+stationary process, by simulation from the maximum likelihood estimate or by
+a parametric bootstrap.
+
+The episodes do not change. The August blocks are the house running near a
+base load through the French summer holiday, and the winter blocks are high
+days the seasonal mean does not reach. Both are behavioural or
+meteorological, and neither is a function of the calendar terms in
+\eqref{eq:design}.
+
+\section{Choosing among the seven specifications}
+
+Nested Gaussian comparisons use likelihood-ratio tests and AIC. AR(2) against
+AR(1) adds one coefficient. $J = 2$ against $J = 1$ adds two. The logarithm
+against the identity is not a nested comparison; both maximised likelihoods
+have to be densities for daily kWh, so the log-scale fit contributes an extra
+$-\log y_t$. Gaussian innovations against $t$ innovations are compared by AIC,
+because $\nu \to \infty$ sits on the boundary of the parameter space.
+
+The holdout designs carry over as written. In the Bayesian comparison, WAIC
+preferred AR(2) and the twelve-month forecast rejected it, because the extra
+lag was fitting the absence blocks one step ahead. AIC can make the same
+mistake. The forecasting question still selects M7: two harmonics, AR(1), $t$
+innovations, kWh scale. The log transform remains the worse forecasting scale.
+
+\section{How the reported numbers translate}
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.34\textwidth}p{0.58\textwidth}@{}}
+\toprule
+\textbf{Quantity in the Bayesian report} & \textbf{Frequentist counterpart} \\
+\midrule
+Posterior mean and 95\% credible interval
+  & Maximum likelihood estimate and 95\% confidence interval \\
+Slope $-0.19\kwh$/year, interval covering 0
+  & Same estimate, same interval, two-sided $p \approx 0.45$ \\
+$\Pr(\mathrm{slope}<0 \mid \mathrm{data}) = 0.775$
+  & No matching probability statement; the interval and the test are the summary \\
+Amplitude, weekend contrast, $\phi$
+  & The same point estimates, with delta-method or bootstrap intervals \\
+Predictive interval at horizon $h$
+  & Plug-in interval, or a bootstrap interval that includes estimation error \\
+Posterior predictive $p$-value
+  & Tail probability at the fitted model, or a bootstrap $p$-value \\
+WAIC
+  & AIC, plus the same holdout log score, CRPS, and coverage \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{What the conclusions still say}
+
+The annual cycle dominates. The second harmonic is needed because the summer
+trough is deeper and later than a single sine wave. The weekend premium is
+several kWh per day, and its confidence interval lies entirely above zero. A
+linear trend is not resolved in four years. Forecast uncertainty stops
+widening after about four days, because $\phi$ is only about $0.4$. Beyond a
+week, a forecast for this house is seasonal-plus-weekly climatology.
+
+The assignment asks for posterior probabilities, and those statements stay in
+the main report. This note records the sampling-theory version of the same
+fit, for the same questions, on the same series.
+
+\end{document}
