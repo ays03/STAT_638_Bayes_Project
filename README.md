@@ -76,3 +76,9 @@ $$
 Develop and justify an appropriate Bayesian model that addresses the scientific
 questions above. Clearly describe the conclusions in terms of household
 electricity demand and its uncertainty.
+
+### Model Guide
+
+See [MODEL_GUIDE.md](MODEL_GUIDE.md) for a plain-language explanation of the
+complete model, every equation and symbol, priors, fitting and validation,
+forecasting, results, limitations, and recommended next steps.
