@@ -3,6 +3,8 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath}
 \usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
 \usepackage[dvipsnames]{xcolor}
 \usepackage[colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue]{hyperref}
 \usepackage{enumitem}
@@ -109,11 +111,12 @@ Student-$t$ innovations use the same normal scale mixture as the sampler,
 \]
 but as an EM algorithm.
 \begin{itemize}
-\item \textbf{E-step.} At the current parameters,
+\item \textbf{E-step.} Conditional on a current innovation value,
 $\hat\lambda_t = (\nu+1)/(\nu + \eta_t^2/\sigma^2)$.
 A small weight is a day the likelihood downweights. These weights are the
 conditional expectations of the latent scales, evaluated once at the maximum
-likelihood estimate.
+likelihood estimate. For a missing day, the E-step also averages over its
+conditional state distribution.
 \item \textbf{M-step.} Weighted least squares for $\boldsymbol\beta$, then
 updates for $\sigma^2$, $\phi$, and $\nu$.
 \end{itemize}
@@ -121,11 +124,14 @@ The algorithm stops at one point
 $(\hat{\boldsymbol\beta},\hat\phi,\hat\sigma,\hat\nu)$ and one set of weights
 $\hat\lambda_t$.
 
-The $23$ missing days are integrated out of the likelihood, by a Kalman filter
-or by EM imputation of their conditional expectations. A parametric bootstrap
-then carries the uncertainty in those days into the standard errors. The
-Bayesian fit imputes them inside the sampler, so that uncertainty is already
-inside every posterior draw.
+The $23$ missing days are integrated out of the observed-data likelihood. A
+Kalman filter does this exactly in the Gaussian case; for the Student-$t$
+scale mixture, EM or Monte Carlo EM averages over the missing states and
+latent scales. Simply filling a missing day with its conditional mean and
+treating it as observed would understate uncertainty. A parametric bootstrap
+then carries missing-state uncertainty into the standard errors. The Bayesian
+fit samples the missing states inside the sampler, so that uncertainty is
+already inside every posterior draw.
 
 Standard errors come from the observed Fisher information at the maximum
 likelihood estimate. A function of the coefficients --- an amplitude, a phase,
@@ -220,8 +226,12 @@ innovations a plug-in prediction interval uses the scale
 \[
 \hat\sigma\sqrt{\sum_{j=0}^{h-1}\hat\phi^{2j}}.
 \]
-For $t$ innovations the interval uses the quantiles of $t_{\hat\nu}$ on that
-same scale.
+For $t$ innovations, a one-step interval can use $t_{\hat\nu}$ quantiles.
+At $h>1$, however, the weighted sum of independent Student-$t$ innovations is
+not itself Student-$t$, so the predictive quantiles must be obtained by
+simulating complete future paths. To include parameter-estimation uncertainty,
+a parametric bootstrap simulates and refits a training series before producing
+each set of forecast paths.
 
 With $\hat\phi = 0.375$ the width rises by about 8\% and then stops. The
 ceiling is the stationary factor $1/\sqrt{1-\hat\phi^2} \approx 1.08$. In the
@@ -267,31 +277,179 @@ lag was fitting the absence blocks one step ahead. AIC can make the same
 mistake. The forecasting question still selects M7: two harmonics, AR(1), $t$
 innovations, kWh scale. The log transform remains the worse forecasting scale.
 
-\section{How the reported numbers translate}
+\section{Bayesian and frequentist approaches side by side}
 
-\begin{center}
-\small
-\begin{tabular}{@{}p{0.34\textwidth}p{0.58\textwidth}@{}}
+The two approaches can use exactly the same response, design matrix, AR(1)
+structure, Student-$t$ innovations, missing-day rule, and holdout period. The
+difference is how uncertainty about the unknown parameters is represented and
+interpreted. The table makes that distinction for this model rather than in
+the abstract.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.17}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.17\textwidth}
+                        >{\raggedright\arraybackslash}p{0.365\textwidth}
+                        >{\raggedright\arraybackslash}p{0.365\textwidth}@{}}
 \toprule
-\textbf{Quantity in the Bayesian report} & \textbf{Frequentist counterpart} \\
+\textbf{Part of this project} &
+\textbf{Bayesian analysis in the main report} &
+\textbf{Frequentist version in this note} \\
 \midrule
-Posterior mean and 95\% credible interval
-  & Maximum likelihood estimate and 95\% confidence interval \\
-Slope $-0.19\kwh$/year, interval covering 0
-  & Same estimate, same interval, two-sided $p \approx 0.45$ \\
-$\Pr(\mathrm{slope}<0 \mid \mathrm{data}) = 0.775$
-  & No matching probability statement; the interval and the test are the summary \\
-Amplitude, weekend contrast, $\phi$
-  & The same point estimates, with delta-method or bootstrap intervals \\
-Predictive interval at horizon $h$
-  & Plug-in interval, or a bootstrap interval that includes estimation error \\
-Posterior predictive $p$-value
-  & Tail probability at the fitted model, or a bootstrap $p$-value \\
-WAIC
-  & AIC, plus the same holdout log score, CRPS, and coverage \\
+\endfirsthead
+\toprule
+\textbf{Part of this project} &
+\textbf{Bayesian analysis in the main report} &
+\textbf{Frequentist version in this note} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\textit{Continued on the next page}} \\
+\endfoot
 \bottomrule
-\end{tabular}
-\end{center}
+\endlastfoot
+
+\textbf{Unknown parameters} &
+After the data are observed, uncertainty about
+$\theta=(\boldsymbol\beta,\phi,\sigma,\nu)$ is represented by the posterior
+$p(\theta\mid y)$. A statement such as
+$\Pr(\beta_1<0\mid y)=0.775$ is allowed, conditional on the model and priors. &
+$\theta$ is a fixed but unknown value. Randomness refers to data that could
+have been generated repeatedly from the model. The analysis does not assign a
+probability that the realised fixed $\beta_1$ is negative. \\
+
+\textbf{Information used} &
+The likelihood from the AR(1)+$t$ model is combined with the stated weakly
+informative priors for $\boldsymbol\beta$, $\sigma$, $\phi$, and $\nu$. &
+The observed-data likelihood and parameter constraints are used, but no prior
+distribution is supplied. Stationarity ($|\phi|<1$) and $\nu>2$ are model
+constraints, not priors. \\
+
+\textbf{What is computed} &
+Gibbs and Metropolis sampling produce draws from the joint posterior, including
+draws of missing daily demand and the latent $t$-mixture weights. A posterior
+mean is a point summary of those draws. &
+Likelihood or EM optimisation produces one maximum likelihood estimate
+$\hat\theta$. Curvature of the likelihood or a parametric bootstrap gives
+standard errors; missing values and robust weights may appear as intermediate
+EM quantities. \\
+
+\textbf{95\% parameter interval} &
+A 95\% credible interval contains 95\% of the posterior probability for the
+parameter, conditional on this dataset, this likelihood, and these priors. &
+A 95\% confidence procedure covers the fixed true parameter in 95\% of
+repeated datasets generated under the model. After one interval is computed,
+it is not interpreted as a 95\% probability that the fixed parameter lies
+inside it. \\
+
+\textbf{Q2: long-term trend} &
+Report the posterior of $\beta_1$: mean
+$-0.186\kwh$/year, 95\% credible interval
+$[-0.667,0.292]$, and
+$\Pr(\beta_1<0\mid y)=0.775$. The posterior says a decline is more plausible
+than an increase, but the uncertainty is wide. &
+Report $\hat\beta_1$, its 95\% confidence interval, and a test of
+$H_0:\beta_1=0$. Using the reported interval as a close approximation gives
+$z\approx-0.76$ and two-sided $p\approx0.45$, so zero trend is not rejected.
+The $p$-value is not the probability that $H_0$ is true. \\
+
+\textbf{Q3: second annual harmonic} &
+Transform every posterior draw of $(a_j,b_j)$ into amplitude and phase. Report
+the posterior interval for $A_2/A_1$ and
+$\Pr(A_2>0.15A_1\mid y)=0.999$, then check WAIC and holdout forecasting. &
+Estimate amplitude and phase from $(\hat a_j,\hat b_j)$. Test the regular null
+$H_0:a_2=b_2=0$ with a two-degree-of-freedom likelihood-ratio test; use a
+bootstrap interval for $A_2/A_1$, AIC, and the same holdout forecasts. \\
+
+\textbf{Q4: weekly pattern} &
+Compute each day effect and the weekend-minus-weekday contrast for every
+posterior draw. The contrast is $4.56\kwh$/day with posterior interval
+$[3.71,5.42]$ and posterior probability of a positive contrast essentially
+one. &
+The same contrast is a linear combination
+$\mathbf c^\top\hat{\boldsymbol\beta}$. Its standard error is
+$\sqrt{\mathbf c^\top\widehat{\mathrm{Var}}(\hat{\boldsymbol\beta})\mathbf c}$.
+Report a Wald or bootstrap confidence interval and a test of a zero contrast. \\
+
+\textbf{Heavy tails and unusual days} &
+Each latent weight $\lambda_t$ has a posterior distribution. Small posterior
+mean weights identify days downweighted by the Student-$t$ likelihood, while
+posterior uncertainty in $\nu$ describes how heavy the tails are. &
+Evaluate the robust weight
+$\hat\lambda_t=(\hat\nu+1)/(\hat\nu+\hat\eta_t^2/\hat\sigma^2)$ at the MLE.
+Small values flag downweighted days. Uncertainty in $\nu$ or a weight is
+obtained from likelihood profiling or a bootstrap. \\
+
+\textbf{The 23 missing days} &
+Missing daily values are latent variables sampled with the parameters. Their
+posterior uncertainty automatically flows into coefficient summaries and
+forecasts. &
+Integrate the missing states out of the observed-data likelihood, or use the
+conditional-Gaussian scale-mixture representation inside EM. Smoothed values
+are estimates, not observed data; a parametric bootstrap propagates their
+uncertainty. \\
+
+\textbf{Q5: future demand} &
+The posterior predictive distribution averages forecasts over posterior draws
+of $\theta$ and over future Student-$t$ innovations. Thus parameter and future
+process uncertainty are both included directly. &
+A plug-in forecast substitutes $\hat\theta$ and includes future innovation
+variance. A parametric bootstrap is needed to add parameter-estimation
+uncertainty. A 95\% prediction procedure is judged by repeated-sample
+coverage; future demand itself is random in both approaches. \\
+
+\textbf{Forecast-horizon result} &
+Posterior draws give $\phi=0.375$ with interval $[0.323,0.426]$ and imply an
+uncertainty ceiling near $1/\sqrt{1-\phi^2}=1.08$. The predictive interval
+therefore stops widening after roughly four days. &
+Insert $\hat\phi$ into the variance multiplier
+$\sqrt{\sum_{j=0}^{h-1}\hat\phi^{2j}}$. This is the ratio to one-step
+innovation uncertainty for any independent, finite-variance innovations.
+Simulate the Student-$t$ predictive quantiles, and use a delta-method or
+bootstrap interval for the ceiling. The same estimated $\phi$ produces the
+same saturation after roughly four days. \\
+
+\textbf{Q6: anomalous periods} &
+Posterior predictive tail areas compare each observed day, and each rolling
+14-day mean, with replicated values averaged over posterior uncertainty. &
+Tail areas are calculated at $\hat\theta$, or calibrated by parametric
+bootstrap. The same 14-day block statistic is essential because one-step
+residuals miss a sustained shift once AR(1) has absorbed it. \\
+
+\textbf{Choosing a model} &
+WAIC compares expected one-step predictive fit; the held-out log score, CRPS,
+and coverage decide whether the choice generalises. The holdout overrides
+WAIC when they disagree. &
+Likelihood-ratio tests compare regular nested models, and AIC compares
+maximised predictive fit. The same held-out log score, CRPS, and coverage
+remain decisive. Log-scale likelihoods must include the $-\log y_t$ Jacobian
+to be comparable on the kWh scale. \\
+
+\textbf{What should be similar} &
+With $1{,}417$ days and weak priors, posterior means and credible intervals for
+well-identified regression effects should be close to likelihood estimates
+and confidence intervals. &
+The MLE should therefore support the same broad conclusions. Larger differences
+are most likely for weakly identified or nonlinear quantities such as $\nu$,
+phase, missing-day values, and extreme-tail probabilities. \\
+
+\textbf{Shared limitation} &
+\multicolumn{2}{>{\raggedright\arraybackslash}p{0.747\textwidth}@{}}{Both
+answers are conditional on the AR(1)+$t$ model and the available calendar
+predictors. Neither approach repairs omitted weather or occupancy information.
+The twelve-month holdout is therefore essential for both.} \\
+
+\end{longtable}
+\endgroup
+
+\noindent
+The shortest distinction is this: Bayesian probability describes uncertainty
+about the parameters \emph{after conditioning on these data and the priors};
+frequentist confidence describes the long-run calibration of an estimation
+procedure over hypothetical repeated datasets. Neither interpretation makes
+one fitted model automatically more accurate, which is why the same external
+holdout remains the final check.
 
 \section{What the conclusions still say}
 
