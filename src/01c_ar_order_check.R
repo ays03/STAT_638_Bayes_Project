@@ -88,7 +88,7 @@ report <- function(e, t, label, add) {
 
 main <- function() {
   ROOT <- script_root()
-  dir.create(file.path(ROOT, "figures"), showWarnings = FALSE)
+  dir.create(file.path(ROOT, "R_figures"), showWarnings = FALSE)
   dir.create(file.path(ROOT, "results"), showWarnings = FALSE)
   d <- read_daily(file.path(ROOT, "data", "daily.csv"))
   obs <- d[d$observed, ]
@@ -147,7 +147,7 @@ main <- function() {
   cat(txt, "\n", sep = "")
   writeLines(txt, file.path(ROOT, "results", "01c_ar_order.txt"))
 
-  png(file.path(ROOT, "figures", "01c_pacf.png"), width = 11, height = 3.6, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01c_pacf.png"), width = 11, height = 3.6, units = "in", res = 140)
   par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
   panels <- list(
     list(e = e, t = t, lab = "all days"),

@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+# R_figures/ is written by the R scripts in src/; run them before knitting.
+fig_path <- file.path("..", "R_figures")
 ```
 
 # 1. Introduction
@@ -58,19 +60,59 @@ Y_d &= \sum_{m=1}^{1440} E_m \\[6pt]
 
 $Y_d$ is computed only for days retained under our 0.95 coverage rule, and other days are treated as missing. $Y_d$ denotes the daily household energy consumption (kWh) and serves as our primary response variable for all subsequent analyses.
 
+```{r fig-series-coverage, echo=FALSE, out.width="100%", fig.cap="Daily energy consumption on the kWh scale (top) and the log scale (middle), and the fraction of each day's 1,440 minutes with a reading (bottom), with the 0.95 retention threshold dashed. Gaps in the series are the days below the threshold. Source: src/01_aggregate.R."}
+knitr::include_graphics(file.path(fig_path, "01_series_and_coverage.png"))
+```
+
+```{r fig-distributions, echo=FALSE, out.width="100%", fig.cap="Left: coverage of the days with at least one missing minute; days at or above the dashed 0.95 line are retained and scaled up to 1,440 minutes, the rest are treated as missing. Centre and right: distribution of retained daily consumption on the kWh and log scales. Source: src/01_aggregate.R."}
+knitr::include_graphics(file.path(fig_path, "01_distributions.png"))
+```
+
 # 2. Exploratory Data Analysis (EDA)
 
 ## 2.1 General Patterns
 
 The aggregated daily series has substantial seasonal and weekly variation in daily household energy consumption. There's considerably higher average demand during the winter, and much lower during the summer. This is reflected in the monthly means, which range from approximately 13.67 kWh/day in August to 35.64 kWh in December. Additionally, daily consumption has recurring differences across the seven days of the week, especially between weekdays and weekends. Lastly, we see several extended periods of unusually low consumption-- for example, a 25-day period in August 2008 where mean consumption was approximately 4.76 kwH/day. Therefore, when building our model, we consider variables to account for all three of these effects (a first and possibly second harmonic to describe the shape of the seasonal cycle, day-of-week effects, and an occupancy regime variable to account for abscence periods).
 
+```{r fig-season-week, echo=FALSE, out.width="100%", fig.cap="Left: daily consumption against day of year, coloured by calendar year. Right: daily consumption by day of week. Source: src/01_aggregate.R."}
+knitr::include_graphics(file.path(fig_path, "01_exploratory_season_week.png"))
+```
+
+```{r fig-seasonal, echo=FALSE, out.width="100%", fig.cap="Left: 15-day moving average of daily consumption within each year, the pooled monthly means, and OLS seasonal curves with one and two harmonics. Right: monthly median, mean, and 10th to 90th percentile range of daily consumption. Source: src/01d_indepth_eda.R."}
+knitr::include_graphics(file.path(fig_path, "01d_seasonal.png"))
+```
+
+```{r fig-enduse, echo=FALSE, out.width="75%", fig.cap="Monthly mean daily consumption by end use. Sub-meter 3 is the circuit the dataset labels as the water heater and air conditioner; unmetered is the whole-house total minus the three sub-meters. Source: src/01d_indepth_eda.R."}
+knitr::include_graphics(file.path(fig_path, "01d_enduse.png"))
+```
+
+```{r fig-diurnal, echo=FALSE, out.width="100%", fig.cap="Left: mean power by hour of day for winter (December to February) and summer (June to August) weekdays and weekends. Centre and right: winter and summer weekday profiles split by end use. Source: src/01d_indepth_eda.R."}
+knitr::include_graphics(file.path(fig_path, "01d_diurnal.png"))
+```
+
 ## 2.2 Response Variable
 
 We then look at whether transforming the response variable can improve our residual fit. We fit linear regressions with annual harmonics and day-of-week effects, and then look at differences between R\^2, residual skew, residual kurtosis, and heteroskedasticity when using Y versus log(y) versus sqrt(y). We find both transformations increase residual skewness without increasing R\^2 or decreasing residual kurtosis, suggesting that our original response variable is best for our model. However, the sustained absence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model. Two other important notes are the heavy tails and the heteroscedasticity, which both persist across response variable specifications-- the heavy tails suggest that we should use a t-likelihood, but the heteroscedasticity still needs to be corrected.
 
+```{r fig-scale-diagnostics, echo=FALSE, out.width="100%", fig.cap="OLS residuals (trend, two harmonics and day of week) for the kWh, square-root and log responses. Top: residuals against fitted values. Bottom: normal Q-Q plots of the standardised residuals. Source: src/01b_transform_check.R."}
+knitr::include_graphics(file.path(fig_path, "01b_scale_diagnostics.png"))
+```
+
 ## 2.3 Temporal Dependence
 
 After accounting for seasonality and day-of-week effects, residuals remain strongly corrected over time. The sample residual autocorrelation is approximately 0.582 at lag 1, 0.455 at lag 2, and 0.432 at lag 3, and 0.273 at lag 7. By itself, this suggests an AR(3) model or higher. However, when taking into account the previously mentioned absence periods, we find that an AR(1) model fits the data the best. Therefore, some of that long-range dependence may be an occupancy regime effect rather than actual high-order autoregressive memory. A next step should be to look at model structures with explicit dependence at weekly or annual time scales (AR(7) and AR(365).
+
+```{r fig-residual-acf, echo=FALSE, out.width="65%", fig.cap="Autocorrelation of the log-scale OLS residuals after trend, two harmonics and day of week, against the geometric decay of an AR(1) with the same lag-1 value. Dashed grey lines are approximate 95% white-noise bounds. Source: src/01b_transform_check.R."}
+knitr::include_graphics(file.path(fig_path, "01b_residual_acf.png"))
+```
+
+```{r fig-pacf, echo=FALSE, out.width="100%", fig.cap="Partial autocorrelation of the log-scale residuals using all observed days (left) and with the sustained low-use blocks, runs of at least 5 days under 12 kWh, removed (right). Source: src/01c_ar_order_check.R."}
+knitr::include_graphics(file.path(fig_path, "01c_pacf.png"))
+```
+
+```{r fig-residual, echo=FALSE, out.width="100%", fig.cap="kWh-scale residuals after trend, two harmonics and day of week. Left: autocorrelation with and without the low-use blocks, against the AR(1) decay implied by the lag-1 value. Right: residual standard deviation by month, with and without the low-use blocks. Source: src/01d_indepth_eda.R."}
+knitr::include_graphics(file.path(fig_path, "01d_residual.png"))
+```
 
 ## 2.4 Implications for Model
 
@@ -91,3 +133,47 @@ There are several implications for our final Bayesian model, including but not l
 I think we should re-write this part bc with its current placement, it doesn't make much sense to explain what each variable is used for (bc we are past that step). We can just describe what we have rn (not what we did to initial dataset). \<---IMPORTANT!!!
 
 Of the nine recorded variables in the dataset, only `Global_active_power` enters the analysis after being transformed into daily energy. `Time` is used in data cleaning to verify every full day contains exactly 1440 unique minutes and in EDA to describe within-day usage. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The remaining electrical channels are discarded since`Global_reactive_power` and `Voltage` are irrelevant to active energy consumption, and `Global_intensity` is nearly collinear with `Global_active_power`. The three sub-metering channels are retained solely as a consistency check, since they do not sum to the whole-house total.
+
+# Appendix: Model, Forecast, and Anomaly Figures
+
+Figures from the model-fitting (`src/03_fit_models.R`), holdout-forecast (`src/04_holdout.R`), and posterior-summary (`src/05_derived.R`) scripts.
+
+## A.1 MCMC Convergence
+
+```{r fig-trace-m3, echo=FALSE, out.width="70%", fig.cap="MCMC trace plots (left) and per-chain marginal posterior densities (right) for every parameter of model M3: two harmonics, AR(1) errors and Student-t innovations on the log scale. Four chains with 6,000 retained draws each. Source: src/03_fit_models.R."}
+knitr::include_graphics(file.path(fig_path, "03_trace_M3.png"))
+```
+
+```{r fig-trace-m5, echo=FALSE, out.width="70%", fig.cap="MCMC trace plots (left) and per-chain marginal posterior densities (right) for every parameter of model M5: two harmonics, AR(2) errors and Student-t innovations on the log scale. Four chains with 6,000 retained draws each. Source: src/03_fit_models.R."}
+knitr::include_graphics(file.path(fig_path, "03_trace_M5.png"))
+```
+
+## A.2 Holdout Forecasts
+
+```{r fig-horizon, echo=FALSE, out.width="100%", fig.cap="Rolling-origin holdout scores against forecast horizon for models M1 to M7, trained through 30 November 2009: (a) mean width of the 95% predictive interval; (b) width relative to one day ahead for M7, the best model by single-origin log predictive density, with the AR(p) prediction and the stationary limit; (c) mean CRPS, with the day-of-year climatology dashed; (d) empirical coverage of the 95% interval. Source: src/04_holdout.R."}
+knitr::include_graphics(file.path(fig_path, "04_horizon.png"))
+```
+
+```{r fig-holdout-fan, echo=FALSE, out.width="100%", fig.cap="Twelve-month-ahead forecast of model M7 from 30 November 2009, with 50% and 95% predictive bands and the predictive median. Red points are the held-out observations; nothing after the dashed line was used in fitting. Source: src/04_holdout.R."}
+knitr::include_graphics(file.path(fig_path, "04_holdout_fan.png"))
+```
+
+```{r fig-pit, echo=FALSE, out.width="100%", fig.cap="Probability integral transform (predictive CDF at the observed value) of the single-origin holdout forecasts for models M7, M1 and M6. Calibrated forecasts give a flat histogram, shown by the dashed line. Source: src/04_holdout.R."}
+knitr::include_graphics(file.path(fig_path, "04_pit.png"))
+```
+
+## A.3 Posterior Seasonal and Weekly Effects
+
+```{r fig-posterior-seasonal, echo=FALSE, out.width="100%", fig.cap="Posterior annual seasonal component of model M7 with the first harmonic only and with both harmonics (left), and the second harmonic on its own (right). Bands are 95% credible intervals. Source: src/05_derived.R."}
+knitr::include_graphics(file.path(fig_path, "05_seasonal.png"))
+```
+
+```{r fig-posterior-weekly, echo=FALSE, out.width="100%", fig.cap="Posterior day-of-week effects of model M7 relative to the weekly mean, with 50% and 95% credible intervals (left), and the posterior distribution of the weekend-minus-weekday difference (right). Source: src/05_derived.R."}
+knitr::include_graphics(file.path(fig_path, "05_weekly.png"))
+```
+
+## A.4 Unusual Days
+
+```{r fig-anomalies, echo=FALSE, out.width="100%", fig.cap="Top: observed daily consumption, the fitted systematic component of model M7, and days flagged by the one-step-ahead posterior predictive check (p below 0.01 or above 0.99). Bottom: posterior mean heavy-tail weights (lambda); low values mark days the Student-t likelihood downweighted as outliers. Source: src/05_derived.R."}
+knitr::include_graphics(file.path(fig_path, "05_anomalies.png"))
+```

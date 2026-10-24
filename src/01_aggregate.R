@@ -17,7 +17,7 @@
 #
 # Outputs
 #   data/daily.csv          date, t, kwh, dow, n_obs, coverage, observed, sub_kwh, year, doy
-#   figures/01_*.png        daily series + coverage, distributions, season and week
+#   R_figures/01_*.png      daily series + coverage, distributions, season and week
 #   results/01_data_summary.txt
 #
 #   Rscript src/01_aggregate.R
@@ -84,7 +84,7 @@ main <- function() {
   RAW <- file.path(ROOT, "data", "household_power_consumption.txt")
   MIN_COVERAGE <- 0.95 # 95% rule
   MINUTES_PER_DAY <- 1440
-  for (sub in c("figures", "results")) dir.create(file.path(ROOT, sub), showWarnings = FALSE)
+  for (sub in c("R_figures", "results")) dir.create(file.path(ROOT, sub), showWarnings = FALSE)
 
   cat("reading raw file ...\n")
   minutes <- load_minutes(RAW)
@@ -191,7 +191,7 @@ main <- function() {
   cat(txt, "\n", sep = "")
   writeLines(txt, file.path(ROOT, "results", "01_data_summary.txt"))
 
-  png(file.path(ROOT, "figures", "01_series_and_coverage.png"), width = 11, height = 9, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01_series_and_coverage.png"), width = 11, height = 9, units = "in", res = 140)
   par(mfrow = c(3, 1), mar = c(3, 4, 3, 1))
   plot(full$date, full$kwh, type = "l", lwd = 0.5, col = "#1f4e79",
        main = "Daily household electricity consumption, Dec 2006 - Nov 2010", ylab = "kWh / day", xlab = "")
@@ -203,7 +203,7 @@ main <- function() {
   legend("bottomright", legend = sprintf("retention threshold %.2f", MIN_COVERAGE), lty = 2, bty = "n", cex = 0.8)
   dev.off()
 
-  png(file.path(ROOT, "figures", "01_distributions.png"), width = 13, height = 3.6, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01_distributions.png"), width = 13, height = 3.6, units = "in", res = 140)
   par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
   #plot days with some missing minutes and mark the 95% line
   low <- full$coverage[full$coverage < 1]
@@ -221,7 +221,7 @@ main <- function() {
        main = sprintf("log daily kWh (skewness %.2f)", skew_adj(log(obs$kwh))), xlab = "log kWh / day")
   dev.off()
 
-  png(file.path(ROOT, "figures", "01_exploratory_season_week.png"), width = 12, height = 4, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01_exploratory_season_week.png"), width = 12, height = 4, units = "in", res = 140)
   par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
   plot(NA, xlim = c(1, 366), ylim = range(obs$kwh), xlab = "day of year", ylab = "kWh / day",
        main = "Annual cycle: consumption vs day of year")
@@ -238,7 +238,7 @@ main <- function() {
           ylab = "kWh / day", main = "Weekly pattern (raw)", col = "#d6eaf8")
   dev.off()
 
-  cat("\nwrote data/daily.csv, results/01_data_summary.txt, 3 figures\n")
+  cat("\nwrote data/daily.csv, results/01_data_summary.txt, 3 figures in R_figures/\n")
 }
 
 # if (sys.nframe() == 0L) main()

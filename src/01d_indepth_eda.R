@@ -274,7 +274,7 @@ dmon <- function(x) sub("^0", "", format(as.Date(x), "%d %b"))
 main <- function() {
   ROOT <- script_root()
   RAW <- file.path(ROOT, "data", "household_power_consumption.txt")
-  dir.create(file.path(ROOT, "figures"), showWarnings = FALSE)
+  dir.create(file.path(ROOT, "R_figures"), showWarnings = FALSE)
   dir.create(file.path(ROOT, "results", "tables"), showWarnings = FALSE, recursive = TRUE)
 
   d <- read_daily(file.path(ROOT, "data", "daily.csv"))
@@ -777,14 +777,16 @@ main <- function() {
 
   year_colors <- c("2007" = "#6c3483", "2008" = "#1f4e79", "2009" = "#148f77", "2010" = "#b9770e")
   clim <- clim_day(obs$date)
-  png(file.path(ROOT, "figures", "01d_seasonal.png"), width = 12.2, height = 4.4, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01d_seasonal.png"), width = 12.2, height = 4.4, units = "in", res = 140)
   par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
-  plot(NA, xlim = c(1, 365), ylim = range(c(y, unlist(curves)), na.rm = TRUE), xlab = "", ylab = "kWh / day", main = "Annual shape by year")
-  for (yr in names(year_colors)) {
+  smooths <- lapply(names(year_colors), function(yr) {
     sel <- year == as.integer(yr)
-    sm <- smooth_on_clim(clim[sel], y[sel], window = 15, circular = yr != "2010")
-    lines(1:365, sm, col = year_colors[[yr]], lwd = 1.15)
-  }
+    smooth_on_clim(clim[sel], y[sel], window = 15, circular = yr != "2010")
+  })
+  month_means <- vapply(month_stats, function(r) r[3], numeric(1))
+  plot(NA, xlim = c(1, 365), ylim = range(c(unlist(smooths), unlist(curves), month_means), na.rm = TRUE),
+       xaxt = "n", xlab = "", ylab = "kWh / day", main = "Annual shape by year")
+  for (i in seq_along(smooths)) lines(1:365, smooths[[i]], col = year_colors[[i]], lwd = 1.15)
   lines(1:365, curves[[1]], col = "#2c3e50", lwd = 1.15, lty = 2)
   lines(1:365, curves[[2]], col = "#b03a2e", lwd = 2)
   mids <- integer(12)
@@ -792,9 +794,9 @@ main <- function() {
     days <- ref_dates[as.integer(format(ref_dates, "%m")) == m]
     mids[m] <- as.integer(format(days[length(days) %/% 2 + 1L], "%j"))
   }
-  points(mids, vapply(month_stats, function(r) r[3], numeric(1)), pch = 16, cex = 0.6)
+  points(mids, month_means, pch = 16, cex = 0.6)
   axis(1, at = mids, labels = substr(MONTHS, 1, 1))
-  legend("topright", legend = c(names(year_colors), "one harmonic", "two harmonics", "month mean"),
+  legend("bottomleft", legend = c(names(year_colors), "one harmonic", "two harmonics", "month mean"),
          col = c(year_colors, "#2c3e50", "#b03a2e", "black"), lty = c(1, 1, 1, 1, 2, 1, NA),
          pch = c(NA, NA, NA, NA, NA, NA, 16), lwd = c(1, 1, 1, 1, 1, 2, NA), cex = 0.65, ncol = 2, bty = "n")
   plot(NA, xlim = c(1, 12), ylim = range(vapply(month_stats, function(r) c(r[5], r[7]), numeric(2))),
@@ -806,11 +808,11 @@ main <- function() {
     points(m, row[6], pch = 16, col = "#1f4e79")
     points(m, row[3], pch = 4, col = "#b03a2e")
   }
-  legend("topright", legend = c("10th to 90th percentile", "median", "mean"),
+  legend("bottomleft", legend = c("10th to 90th percentile", "median", "mean"),
          col = c("#1f4e79", "#1f4e79", "#b03a2e"), pch = c(NA, 16, 4), lty = c(1, NA, NA), lwd = c(4, NA, NA), bty = "n", cex = 0.75)
   dev.off()
 
-  png(file.path(ROOT, "figures", "01d_enduse.png"), width = 8.4, height = 4.3, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01d_enduse.png"), width = 8.4, height = 4.3, units = "in", res = 140)
   par(mar = c(4, 4, 3, 1))
   M <- sapply(1:12, function(m) vapply(ENDUSE, function(eu) mean(obs[month == m, eu[[1]]]), numeric(1)))
   bp <- barplot(M, col = vapply(ENDUSE, function(eu) eu[[3]], character(1)), ylim = c(0, max(colSums(M)) * 1.22),
@@ -819,10 +821,10 @@ main <- function() {
          fill = vapply(ENDUSE, function(eu) eu[[3]], character(1)), ncol = 2, bty = "n", cex = 0.75)
   dev.off()
 
-  png(file.path(ROOT, "figures", "01d_diurnal.png"), width = 12.4, height = 4.15, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01d_diurnal.png"), width = 12.4, height = 4.15, units = "in", res = 140)
   par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
   styles <- list("winter weekday" = "#1f4e79", "winter weekend" = "#5dade2", "summer weekday" = "#b03a2e", "summer weekend" = "#e59866")
-  ylim <- range(vapply(profiles, function(p) p[, "kw"], numeric(24)), na.rm = TRUE)
+  ylim <- c(0, max(vapply(profiles, function(p) p[, "kw"], numeric(24)), na.rm = TRUE))
   plot(0:23, profiles[["winter weekday"]][, "kw"], type = "n", ylim = ylim, xlab = "hour", ylab = "kW", main = "Mean power")
   for (key in names(styles)) lines(0:23, profiles[[key]][, "kw"], col = styles[[key]], lwd = 1.6)
   legend("topleft", legend = names(styles), col = unlist(styles), lwd = 1.6, cex = 0.65, bty = "n")
@@ -842,7 +844,7 @@ main <- function() {
          fill = vapply(stack_keys, function(sk) sk[3], character(1)), cex = 0.65, bty = "n")
   dev.off()
 
-  png(file.path(ROOT, "figures", "01d_residual.png"), width = 12, height = 4, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01d_residual.png"), width = 12, height = 4, units = "in", res = 140)
   par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
   lags <- 1:21
   bp <- barplot(rho, names.arg = lags, col = "#1f4e79", xlab = "lag (days)", ylab = "residual autocorrelation",
@@ -854,7 +856,7 @@ main <- function() {
   legend("topright", legend = c("all retained days", "low-use blocks removed", expression(paste("AR(1) from ", hat(rho)[1]))),
          col = c("#1f4e79", "#b03a2e", "#7f8c8d"), lty = c(NA, 1, 2), pch = c(15, 16, NA), cex = 0.7, bty = "n")
   bp <- barplot(sd_m, names.arg = substr(MONTHS, 1, 1), col = "#1f4e79", ylab = "residual SD (kWh)",
-                main = "Scale of the residual by month", ylim = range(c(sd_m, sd_m_ex), na.rm = TRUE))
+                main = "Scale of the residual by month", ylim = c(0, 1.05 * max(c(sd_m, sd_m_ex), na.rm = TRUE)))
   points(bp, sd_m_ex, pch = 16, col = "#b03a2e")
   legend("topright", legend = c("all retained days", "low-use blocks removed"),
          col = c("#1f4e79", "#b03a2e"), pch = c(15, 16), cex = 0.75, bty = "n")
@@ -864,7 +866,7 @@ main <- function() {
   out <- file.path(ROOT, "results", "01d_eda.txt")
   writeLines(txt, out)
   cat(txt, "\n", sep = "")
-  cat(sprintf("\nwrote %s, four figures, five tables\n", out))
+  cat(sprintf("\nwrote %s, four figures in R_figures/, five tables\n", out))
 }
 
 if (sys.nframe() == 0L) main()
