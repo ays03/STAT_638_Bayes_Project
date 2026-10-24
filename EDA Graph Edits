@@ -1,0 +1,10 @@
+01_distributions.png -> not needed
+01_exploratory_season_week.png -> needed
+01_series_and_coverage.png -> first graph only (top one)
+01b_residual_acf.png -> remove, version that compares both models used later
+01b_scale_diagnostics.png -> check which model is being used here, and then we can decide whether to keep it or not
+01c_pacf.png -> 
+01d_dirunal.png -> dependent on whether an interaction model makes sense or could be added without too much complexity
+01d_enduse.png -> just by eyeballing it, maybe not necessary (can ask Claude if useful in any way) 
+01d_residual.png -> keep left graphic, maybe change the left graphic to make it more interpretable; right graphic probably not necessary due to the left graphic containing the important information, but we should justify the absence periods somehow
+01d_seasonal.png -> keep left graphic, maybe keep right graphic depending on whether we have something to say about the spreads of the month
