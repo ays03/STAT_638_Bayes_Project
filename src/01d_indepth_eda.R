@@ -5,6 +5,9 @@
 #
 #   Rscript src/01d_indepth_eda.R
 
+library(here)
+
+
 script_root <- function() {
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
@@ -658,6 +661,27 @@ main <- function() {
   add(sprintf("    largest positive residual: %s  %+.1f kWh  (consumption %.1f)", obs$date[top], resid_j2[top], y[top]))
   add(sprintf("  residual skew %.2f   excess kurtosis %.2f", skew_adj(resid_j2), kurt_adj(resid_j2)))
   add(sprintf("  residual sd all days %.2f   excluding blocks %.2f", sd(resid_j2), sd(resid_j2[!block])))
+  
+  ##############################################################################
+  # ADD !!!
+  # --- Table 1: residual summary on the kWh and log scales (same mean structure) ---
+  kurt_raw <- function(x) { xc <- x - mean(x); mean(xc^4) / mean(xc^2)^2 }   # normal = 3
+  X_j2d <- cbind(1, t / 365, harmonic_cols(t, 2), Dd)        # trend + 2 harmonics + day of week
+  tab1 <- do.call(rbind, lapply(c("kWh", "log"), function(sc) {
+    yy <- if (sc == "kWh") y else log(y)
+    rr <- ols(X_j2d, yy)$resid
+    data.frame(Scale = sc,
+               `Residual skew` = round(skew_adj(rr), 3),
+               Kurtosis        = round(kurt_raw(rr), 2),
+               `Lag-1 ACF`     = round(acf_calendar(rr, t, 1), 3),
+               check.names = FALSE)
+  }))
+  add("")
+  add("TABLE 1: RESIDUAL SUMMARY ON BOTH SCALES  (normal errors: skew 0, kurtosis 3)")
+  add(paste(capture.output(print(tab1, row.names = FALSE)), collapse = "\n"))
+  write.csv(tab1, file.path(ROOT, "results", "tables", "table1_scale_check.csv"), row.names = FALSE)
+  ##############################################################################
+  
   add("")
   add("RESIDUAL SD BY MONTH, AFTER TREND + 2 HARMONICS + DAY OF WEEK")
   add(sprintf("%4s %8s %12s %6s", "mo", "sd", "sd ex-block", "n ex"))
@@ -812,6 +836,42 @@ main <- function() {
          col = c("#1f4e79", "#1f4e79", "#b03a2e"), pch = c(NA, 16, 4), lty = c(1, NA, NA), lwd = c(4, NA, NA), bty = "n", cex = 0.75)
   dev.off()
 
+  ##############################################################################
+  # ADD!
+  # --- Figure: data overview (EDA Fig 1) --------------------------------------
+  # top: daily series (from 01_series_and_coverage); bottom-left: annual shape by year
+  # (from 01d_seasonal); bottom-right: weekly pattern (from 01_exploratory_season_week)
+  png(file.path(ROOT, "R_figures", "01d_overview.png"), width = 12.5, height = 8, units = "in", res = 140)
+  layout(matrix(c(1, 1,
+                  2, 3), nrow = 2, byrow = TRUE))
+  par(mar = c(4, 4, 3, 1))
+  
+  # (a) daily series on the full calendar (missing days appear as gaps)
+  plot(d$date, d$kwh, type = "l", lwd = 0.5, col = "#1f4e79", xlab = "", ylab = "kWh / day",
+       main = "(a) Daily household electricity consumption, Dec 2006 - Nov 2010")
+  rug(d$date[!d$observed], col = "#b03a2e", lwd = 1.5)
+  legend("topright", legend = c("daily kWh", "missing day"), col = c("#1f4e79", "#b03a2e"),
+         lwd = c(1, 1.5), cex = 0.75, bty = "n")
+  
+  # (b) annual shape by year, with one- and two-harmonic fits and monthly means
+  plot(NA, xlim = c(1, 365), ylim = range(c(unlist(smooths), unlist(curves), month_means), na.rm = TRUE),
+       xaxt = "n", xlab = "", ylab = "kWh / day", main = "(b) Annual shape by year")
+  for (i in seq_along(smooths)) lines(1:365, smooths[[i]], col = year_colors[[i]], lwd = 1.15)
+  lines(1:365, curves[[1]], col = "#2c3e50", lwd = 1.15, lty = 2)
+  lines(1:365, curves[[2]], col = "#b03a2e", lwd = 2)
+  points(mids, month_means, pch = 16, cex = 0.6)
+  axis(1, at = mids, labels = substr(MONTHS, 1, 1))
+  legend("bottomleft", legend = c(names(year_colors), "one harmonic", "two harmonics", "month mean"),
+         col = c(year_colors, "#2c3e50", "#b03a2e", "black"), lty = c(1, 1, 1, 1, 2, 1, NA),
+         pch = c(NA, NA, NA, NA, NA, NA, 16), lwd = c(1, 1, 1, 1, 1, 2, NA), cex = 0.65, ncol = 2, bty = "n")
+  
+  # (c) weekly pattern
+  boxplot(split(y, factor(dow, levels = 0:6)), names = DOW_NAMES, col = "#d6eaf8",
+          ylab = "kWh / day", main = "(c) Weekly pattern")
+  dev.off()
+  ##############################################################################
+  
+  
   png(file.path(ROOT, "R_figures", "01d_enduse.png"), width = 8.4, height = 4.3, units = "in", res = 140)
   par(mar = c(4, 4, 3, 1))
   M <- sapply(1:12, function(m) vapply(ENDUSE, function(eu) mean(obs[month == m, eu[[1]]]), numeric(1)))
@@ -862,6 +922,55 @@ main <- function() {
          col = c("#1f4e79", "#b03a2e"), pch = c(15, 16), cex = 0.75, bty = "n")
   dev.off()
 
+  ##############################################################################
+  # ADD? YES!
+  # --- Figure: residual checks on the kWh scale (EDA Fig 2) ------------------
+  # resid_j2 = kWh residuals after trend + 2 harmonics + day of week (defined above)
+  fit_j2 <- y - resid_j2
+  
+  png(file.path(ROOT, "R_figures", "01d_residual_checks.png"), width = 12, height = 7.5, units = "in", res = 140)
+  layout(matrix(c(1, 1,
+                  2, 3), nrow = 2, byrow = TRUE))
+  par(mar = c(4, 4, 3, 1))
+  
+  # (a) residuals over time
+  plot(obs$date, resid_j2, type = "h", col = ifelse(block, "#b03a2e", "grey55"),
+       xlab = "", ylab = "residual (kWh)",
+       main = "(a) Residuals over time after trend, two harmonics, day of week")
+  abline(h = 0)
+  sm <- lowess(as.numeric(obs$date), resid_j2, f = 0.1)     # should stay near 0
+  lines(as.Date(sm$x, origin = "1970-01-01"), sm$y, col = "#1f4e79", lwd = 2)
+  legend("topright", legend = c("residual", "low-use block day", "smoothed residual"),
+         col = c("grey55", "#b03a2e", "#1f4e79"), lwd = c(1, 1, 2), cex = 0.75, bty = "n")
+  
+  # (b) residual vs fitted
+  plot(fit_j2, resid_j2, pch = 16, cex = 0.4, col = adjustcolor("#1f4e79", 0.4),
+       xlab = "fitted (kWh)", ylab = "residual (kWh)", main = "(b) Residual vs fitted")
+  abline(h = 0)
+  lines(lowess(fit_j2, resid_j2), col = "#b03a2e", lwd = 1.5)
+  
+  # (c) normal Q-Q
+  qqnorm(resid_j2 / sd(resid_j2), pch = 16, cex = 0.4, col = adjustcolor("#1f4e79", 0.5),
+         main = sprintf("(c) Normal Q-Q (skew %.2f)", skew_adj(resid_j2)))
+  qqline(resid_j2 / sd(resid_j2))
+  dev.off()
+  
+  # ##############################################################################
+  # # ADD? NO !!!
+  # # --- residuals over time (EDA Fig 2a): leftover wave/bend? long runs below zero? ---
+  # png(file.path(ROOT, "R_figures", "01d_residual_time.png"), width = 12, height = 4, units = "in", res = 140)
+  # par(mar = c(4, 4, 3, 1))
+  # plot(obs$date, resid_j2, type = "h", col = ifelse(block, "#b03a2e", "grey55"),
+  #      xlab = "", ylab = "residual (kWh)",
+  #      main = "kWh residuals over time after trend, two harmonics, day of week")
+  # abline(h = 0)
+  # sm <- lowess(as.numeric(obs$date), resid_j2, f = 0.1)   # smooth: should stay near 0
+  # lines(as.Date(sm$x, origin = "1970-01-01"), sm$y, col = "#1f4e79", lwd = 2)
+  # legend("topright", legend = c("residual", "low-use block day", "smoothed residual"),
+  #        col = c("grey55", "#b03a2e", "#1f4e79"), lwd = c(1, 1, 2), cex = 0.75, bty = "n")
+  # dev.off()
+  # ##############################################################################
+  
   txt <- paste(lines, collapse = "\n")
   out <- file.path(ROOT, "results", "01d_eda.txt")
   writeLines(txt, out)

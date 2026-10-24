@@ -164,30 +164,41 @@ Y_d &= \sum_{m=1}^{1440} E_m \\[6pt]
 &= \frac{1}{60} \sum_{m=1}^{1440} \text{GAP}_m
 \end{aligned}$$
 
-$Y_d$ is computed only for days retained under our 0.95 coverage rule, and other days are treated as missing. $Y_d$ denotes the daily household energy consumption (kWh) and serves as our primary response variable for all subsequent analyses.  
+$Y_d$ is computed only for days retained under our 0.95 coverage rule, and other days are treated as missing. $Y_d$ denotes the daily household energy consumption (kWh) and serves as our primary response variable for all subsequent analyses.
 
 For the analysis, `daily.csv` is used. It contains the response variable $Y_d$ and other columns that were created based on the original dataset. The new columns are: `t`, `dow`, `n_obs`, `coverage`, `observed`, `sub_kwh`, `year`, `doy`. These new columns are essential for the model. (To rebuild `data/daily.csv`, download the UCI file into `data/` and set the above code chunk to `eval=TRUE`)
 
 # 2. Exploratory Data Analysis (EDA)
-```{r}
-data = read.csv("data/daily.csv",header=TRUE)
-dim(data)
-head(data)
-data$Y_d = data$kwh
-```
 
+```{r eda-run, include = FALSE}
+library(here)
+source(here("src", "01d_indepth_eda_short_.R"))   # remakes R_figures/*.png and results/tables/table1_scale_check.csv
+```
 
 ## 2.1 General Patterns
 
-```{r}
-plot(data$t ,data$kwh, type="l")
+```{r fig1, echo = FALSE, out.width = "100%",        fig.cap = "Figure 1. (a) Daily consumption with missing days marked in red; (b) annual shape by year with one- and two-harmonic fits; (c) weekly pattern."}
+knitr::include_graphics(here("R_figures", "01d_overview.png"))
 ```
 
-In the above panel, we look at daily household energy consumption throughout the whole time series, as well as its seasonal and weekly variation. As we can see from the first graph, daily household energy consumption has a clear yearly wave, but no real overall drift, pointing to negigible long-run changes but substantial seasonal variation. Looking at the seasonal variation, our data is an intutive U-shape, higher electricity consumption in the winter months and lower electricity consumption in the summer months, with a relatively smooth shape-- both harmonics seem to fit the overall pattern. Lastly, looking at the weekly variation, we can see that there are recurring differences across the seven days of the week, especially with Saturday and Sunday having slightly higher means and larger IQRs than weekdays. 
+In the above panel, we look at daily household energy consumption throughout the whole time series, as well as its seasonal and weekly variation. As we can see from the first graph, daily household energy consumption has a clear yearly wave, but no real overall drift, pointing to negigible long-run changes but substantial seasonal variation. Looking at the seasonal variation, our data is an intutive U-shape, higher electricity consumption in the winter months and lower electricity consumption in the summer months, with a relatively smooth shape-- both harmonics seem to fit the overall pattern. Lastly, looking at the weekly variation, we can see that there are recurring differences across the seven days of the week, especially with Saturday and Sunday having slightly higher means and larger IQRs than weekdays.
 
 ## 2.2 Response Variable
 
-We then look at whether transforming the response variable can improve our residual fit. We fit linear regressions with annual harmonics and day-of-week effects, and then look at differences between R\^2, residual skew, residual kurtosis, and heteroskedasticity when using Y versus log(y) versus sqrt(y). We find both transformations increase residual skewness without increasing R\^2 or decreasing residual kurtosis, suggesting that our original response variable is best for our model. However, the sustained absence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model. Two other important notes are the heavy tails and the heteroscedasticity, which both persist across response variable specifications-- the heavy tails suggest that we should use a t-likelihood, but the heteroscedasticity still needs to be corrected.
+```{r table1, echo = FALSE}
+tab1 <- read.csv(here("results", "tables", "table1_scale_check.csv"), check.names = FALSE)
+knitr::kable(tab1, caption = "Table 1. Residual summary on the kWh and log scales (OLS: trend + two harmonics + day of week). Normal errors have skew 0 and kurtosis 3.")
+```
+
+We then look at whether transforming $Y_d$ can improve our residual fit. We fit Ordinary Least Squares (OLS) regressions with intercept, linear trend, annual harmonics, and day-of-week effects for both $Y_d$ and $\log(Y_d)$. According to Table 1, the log transformation increases residual skewness and kurtosis, suggesting that untransformed $Y_d$ (skewness near 0) is best for our model. Kurtosis is large for both response variable specifications, which means we should use t-errors. Lastly, the lag-1 autocorrelation is 0.37 for $Y_d$, so we should use AR errors.
+
+(IDK if we still need this part???) However, the sustained absence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model.
+
+```{r fig2, echo = FALSE, out.width = "100%",        fig.cap = "Figure 2. OLS residuals on the kWh scale: (a) over time, with low-use block days in red; (b) against fitted values; (c) normal Q-Q plot."}
+knitr::include_graphics(here("R_figures", "01d_residual_checks.png"))
+```
+
+The smoothed residuals stay close to zero for the whole time, so the OLS pre-fits captures the main structure of the data (Figure 2a). There are still some uncaptured wiggles, so the 2 harmonics may not be capturing the seasonal effects perfectly. Three of the red absence blocks are in the summer, so these are likely when the household is away for vacation. Using t-errors and/or absence indicators can account for them as well as the shorter grey dips. AR errors also seem reasonable as residuals of the same sign tend to be consecutive. Residuals are independent of fitted values (Figure 2b), but there is mild funneling out (heteroscedasticity) at higher fitted values (winter). Log-transformation could reduce this mild heteroscedasticity but at the cost of increasing skewness. We think t-errors will absorb some of the extreme fitted values here (less weight on them). Lastly, the normal Q-Q plot shows heavy tails and symmetry, which is supported by Table1 and is exactly what the t-errors are aimed at.
 
 ## 2.3 Temporal Dependence
 
