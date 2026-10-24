@@ -183,8 +183,7 @@ data$Y_d = data$kwh
 plot(data$t ,data$kwh, type="l")
 ```
 
-
-The aggregated daily series has substantial seasonal and weekly variation in daily household energy consumption. There's considerably higher average demand during the winter, and much lower during the summer. This is reflected in the monthly means, which range from approximately 13.67 kWh/day in August to 35.64 kWh in December. Additionally, daily consumption has recurring differences across the seven days of the week, especially between weekdays and weekends. Lastly, we see several extended periods of unusually low consumption-- for example, a 25-day period in August 2008 where mean consumption was approximately 4.76 kwH/day. Therefore, when building our model, we consider variables to account for all three of these effects (a first and possibly second harmonic to describe the shape of the seasonal cycle, day-of-week effects, and an occupancy regime variable to account for absence periods).
+In the above panel, we look at daily household energy consumption throughout the whole time series, as well as its seasonal and weekly variation. As we can see from the first graph, daily household energy consumption has a clear yearly wave, but no real overall drift, pointing to negigible long-run changes but substantial seasonal variation. Looking at the seasonal variation, our data is an intutive U-shape, higher electricity consumption in the winter months and lower electricity consumption in the summer months, with a relatively smooth shape-- both harmonics seem to fit the overall pattern. Lastly, looking at the weekly variation, we can see that there are recurring differences across the seven days of the week, especially with Saturday and Sunday having slightly higher means and larger IQRs than weekdays. 
 
 ## 2.2 Response Variable
 
