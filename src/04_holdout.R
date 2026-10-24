@@ -75,7 +75,7 @@ climatology_baseline <- function(train, test) {
 main <- function() {
   OUT <- file.path(ROOT, "results", "04_holdout")
   dir.create(OUT, showWarnings = FALSE, recursive = TRUE)
-  dir.create(file.path(ROOT, "figures"), showWarnings = FALSE)
+  dir.create(file.path(ROOT, "R_figures"), showWarnings = FALSE)
   d <- read_daily(file.path(ROOT, "data", "daily.csv"))
   train <- d[d$date <= TRAIN_END, ]
   test <- d[d$date > TRAIN_END, ]
@@ -309,9 +309,9 @@ main <- function() {
   writeLines(txt, file.path(ROOT, "results", "04_holdout.txt"))
 
   hs <- seq_len(ROLL_H)
-  png(file.path(ROOT, "figures", "04_horizon.png"), width = 13, height = 7.5, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "04_horizon.png"), width = 13, height = 7.5, units = "in", res = 140)
   par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
-  cols <- c("#1f4e79", "#b03a2e", "#1e8449", "#b9770e", "#6c3483", "#1a5276", "#7f8c8d")
+  cols <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2")
   plot(NA, xlim = c(1, ROLL_H), ylim = range(unlist(lapply(SPECS, function(s) vapply(hs, function(h) mean(roll_store[[s$id]][[h]]$w95), numeric(1))))),
        xlab = "forecast horizon h (days)", ylab = "mean width of 95% interval (kWh)",
        main = "(a) Predictive uncertainty vs horizon (rolling origins)")
@@ -345,7 +345,7 @@ main <- function() {
   dev.off()
 
   z <- rows_single[[best_id]]
-  png(file.path(ROOT, "figures", "04_holdout_fan.png"), width = 12, height = 4.2, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "04_holdout_fan.png"), width = 12, height = 4.2, units = "in", res = 140)
   par(mar = c(4, 4, 3, 1))
   tr_i <- max(1, nrow(train) - 199):nrow(train)
   ylim <- range(c(train$kwh[tr_i], y_test, z$q), na.rm = TRUE)
@@ -365,7 +365,7 @@ main <- function() {
 
   show <- unique(c(best_id, c("M1", "M6", "M7")))
   show <- show[seq_len(min(4, length(show)))]
-  png(file.path(ROOT, "figures", "04_pit.png"), width = 3.4 * length(show), height = 3.4, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "04_pit.png"), width = 3.4 * length(show), height = 3.4, units = "in", res = 140)
   par(mfrow = c(1, length(show)), mar = c(4, 4, 3, 1))
   for (mid in show) {
     v <- rows_single[[mid]]$pit
@@ -375,7 +375,7 @@ main <- function() {
     abline(h = length(v) / 20, lty = 2)
   }
   dev.off()
-  cat("\nwrote results/04_holdout.txt and 3 figures\n")
+  cat("\nwrote results/04_holdout.txt and 3 figures in R_figures/\n")
 }
 
 if (sys.nframe() == 0L) main()

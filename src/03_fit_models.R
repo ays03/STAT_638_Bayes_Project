@@ -68,7 +68,7 @@ kde_curve <- function(v) {
 main <- function() {
   FITDIR <- file.path(ROOT, "results", "03_fits")
   dir.create(FITDIR, showWarnings = FALSE, recursive = TRUE)
-  dir.create(file.path(ROOT, "figures"), showWarnings = FALSE)
+  dir.create(file.path(ROOT, "R_figures"), showWarnings = FALSE)
   d <- read_daily(file.path(ROOT, "data", "daily.csv"))
   y <- d$kwh
   observed <- d$observed
@@ -176,7 +176,7 @@ main <- function() {
   for (mid in c("M3", "M5")) {
     pars <- param_table(fits[[mid]])
     n <- length(pars)
-    png(file.path(ROOT, "figures", sprintf("03_trace_%s.png", mid)),
+    png(file.path(ROOT, "R_figures", sprintf("03_trace_%s.png", mid)),
         width = 11, height = 1.5 * n, units = "in", res = 120)
     layout(matrix(seq_len(2 * n), ncol = 2, byrow = TRUE), widths = c(2.2, 1))
     par(mar = c(2, 4, 2, 1))
@@ -197,7 +197,7 @@ main <- function() {
     }
     dev.off()
   }
-  cat(sprintf("\nwrote %d fits to results/03_fits/, convergence + WAIC tables, trace plots\n", length(SPECS)))
+  cat(sprintf("\nwrote %d fits to results/03_fits/, convergence + WAIC tables, trace plots in R_figures/\n", length(SPECS)))
 }
 
 if (sys.nframe() == 0L) main()

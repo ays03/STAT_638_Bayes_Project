@@ -61,7 +61,7 @@ roll_mean_mat <- function(a, w) {
 }
 
 main <- function() {
-  dir.create(file.path(ROOT, "figures"), showWarnings = FALSE)
+  dir.create(file.path(ROOT, "R_figures"), showWarnings = FALSE)
   dir.create(file.path(ROOT, "results", "tables"), showWarnings = FALSE, recursive = TRUE)
   d <- read_daily(file.path(ROOT, "data", "daily.csv"))
   t <- as.numeric(d$t)
@@ -327,7 +327,7 @@ main <- function() {
   tot <- comp[[1]] + comp[[2]]
   cal <- date0 + (tt - 1)
   xn <- as.numeric(cal)
-  png(file.path(ROOT, "figures", "05_seasonal.png"), width = 13, height = 4.2, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "05_seasonal.png"), width = 13, height = 4.2, units = "in", res = 140)
   par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
   q1 <- apply(comp[[1]], 2, quantile, probs = c(0.025, 0.5, 0.975))
   qt <- apply(tot, 2, quantile, probs = c(0.025, 0.5, 0.975))
@@ -352,7 +352,7 @@ main <- function() {
   dow_cols <- match(paste0("dow_", DAYNAMES[-1]), nm)
   dow_full <- cbind(0, b[, dow_cols, drop = FALSE])
   prof <- dow_full - rowMeans(dow_full)
-  png(file.path(ROOT, "figures", "05_weekly.png"), width = 12, height = 3.8, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "05_weekly.png"), width = 12, height = 3.8, units = "in", res = 140)
   par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
   q <- apply(prof, 2, quantile, probs = c(0.025, 0.25, 0.5, 0.75, 0.975))
   plot(0:6, q[3, ], ylim = range(q), pch = 16, col = "#1f4e79", xaxt = "n",
@@ -368,7 +368,7 @@ main <- function() {
   abline(v = 0)
   dev.off()
 
-  png(file.path(ROOT, "figures", "05_anomalies.png"), width = 12, height = 6, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "05_anomalies.png"), width = 12, height = 6, units = "in", res = 140)
   par(mfrow = c(2, 1), mar = c(4, 4, 3, 1))
   plot(d$date, d$kwh, type = "l", lwd = 0.5, col = "#888888", xlab = "", ylab = "kWh/day",
        main = "Posterior predictive check: which days the model cannot explain")
@@ -379,10 +379,10 @@ main <- function() {
          col = c("#888888", "#1f4e79", "#b03a2e"), lty = c(1, 1, NA), pch = c(NA, NA, 1), cex = 0.75, ncol = 3, bty = "n")
   plot(d$date, d$lam, type = "l", lwd = 0.7, col = "#2e7d32", xlab = "date", ylab = "posterior mean lambda")
   abline(h = 0.5, lty = 2, col = "#b03a2e")
-  legend("topright", legend = "lambda = 0.5 downweighting threshold", col = "#b03a2e", lty = 2, bty = "n", cex = 0.8)
+  legend("bottomright", legend = "lambda = 0.5 downweighting threshold", col = "#b03a2e", lty = 2, bty = "n", cex = 0.8)
   title("Heavy-tail weights: low lambda marks days treated as outliers")
   dev.off()
-  cat("\nwrote results/05_derived.txt, 05_daily_with_diagnostics.csv, 3 figures\n")
+  cat("\nwrote results/05_derived.txt, 05_daily_with_diagnostics.csv, 3 figures in R_figures/\n")
 }
 
 if (sys.nframe() == 0L) main()

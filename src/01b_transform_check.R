@@ -60,7 +60,7 @@ kurt_raw <- function(x) {
 
 main <- function() {
   ROOT <- script_root()
-  dir.create(file.path(ROOT, "figures"), showWarnings = FALSE)
+  dir.create(file.path(ROOT, "R_figures"), showWarnings = FALSE)
   dir.create(file.path(ROOT, "results"), showWarnings = FALSE)
   d <- read_daily(file.path(ROOT, "data", "daily.csv"))
   obs <- d[d$observed, ]
@@ -138,7 +138,7 @@ main <- function() {
   cat(txt, "\n", sep = "")
   writeLines(txt, file.path(ROOT, "results", "01b_transform_check.txt"))
 
-  png(file.path(ROOT, "figures", "01b_scale_diagnostics.png"), width = 13.5, height = 7, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01b_scale_diagnostics.png"), width = 13.5, height = 7, units = "in", res = 140)
   par(mfrow = c(2, 3), mar = c(4, 4, 3, 1))
   for (label in c("kwh", "sqrt", "log")) {
     r <- resids[[label]]$r
@@ -155,7 +155,7 @@ main <- function() {
   }
   dev.off()
 
-  png(file.path(ROOT, "figures", "01b_residual_acf.png"), width = 7, height = 3.4, units = "in", res = 140)
+  png(file.path(ROOT, "R_figures", "01b_residual_acf.png"), width = 7, height = 3.4, units = "in", res = 140)
   par(mar = c(4, 4, 3, 1))
   lags <- 1:21
   bp <- barplot(a, names.arg = lags, col = "#1f4e79", xlab = "lag (days)", ylab = "residual autocorrelation",
