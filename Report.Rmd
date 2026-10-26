@@ -171,17 +171,20 @@ For the analysis, `daily.csv` is used. It contains the response variable $Y_d$ a
 # 2. Exploratory Data Analysis (EDA)
 
 ```{r eda-run, include = FALSE}
-library(here)
 source(here("src", "01d_indepth_eda_short_.R"))   # remakes R_figures/*.png and results/tables/table1_scale_check.csv
 ```
 
 ## 2.1 General Patterns
 
+```{r}
+library(here)
+```
+
 ```{r fig1, echo = FALSE, out.width = "100%",        fig.cap = "Figure 1. (a) Daily consumption with missing days marked in red; (b) annual shape by year with one- and two-harmonic fits; (c) weekly pattern."}
 knitr::include_graphics(here("R_figures", "01d_overview.png"))
 ```
 
-In the above panel, we look at daily household energy consumption throughout the whole time series, as well as its seasonal and weekly variation. As we can see from the first graph, daily household energy consumption has a clear yearly wave, but no real overall drift, pointing to negigible long-run changes but substantial seasonal variation. Looking at the seasonal variation, our data is an intutive U-shape, higher electricity consumption in the winter months and lower electricity consumption in the summer months, with a relatively smooth shape-- both harmonics seem to fit the overall pattern. Lastly, looking at the weekly variation, we can see that there are recurring differences across the seven days of the week, especially with Saturday and Sunday having slightly higher means and larger IQRs than weekdays.
+In the above panel, we look at daily household energy consumption throughout the whole time series, as well as its seasonal and weekly variation. As we can see in Figure 1a, daily household energy consumption has a clear yearly wave, but no real overall drift, pointing to negligible long-run changes but substantial seasonal variation. Looking at the seasonal variation, our data is an intuitive U-shape, higher electricity consumption in the winter months and lower electricity consumption in the summer months, with a relatively smooth shape- both harmonics seem to fit the overall pattern. Lastly, looking at the weekly variation, we can see that there are recurring differences across the seven days of the week, especially with Saturday and Sunday having slightly higher means and larger Interquartile ranges (IQRs) than weekdays. Overall, weekends are higher than weekdays (Figure 1d), but the weekdays also differ (Figure 1e). Therefore, we use day-of-week effect and will later compare a weekend indicator with day-of-week effect.
 
 ## 2.2 Response Variable
 
@@ -210,7 +213,7 @@ There are several implications for our final Bayesian model, including but not l
 
 1.  Systematic mean structure: daily consumption varies with long-term time, annual seasonality, and day of the week.
 
-2.  Response scale: the original kWh scale is preferable to the square-root and logarithmic transformations with respect to residual symmetry, although heteroscedasticity remains to be investigated
+2.  Response scale: the original kWh scale is preferable to the logarithmic transformation with respect to residual symmetry, although heteroscedasticity remains to be investigated ???????????.
 
 3.  Heavy tails: residual kurtosis is larger than the Gaussian benchmark, motivating consideration of a Student-(t) likelihood
 
