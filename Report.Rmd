@@ -208,7 +208,11 @@ The smoothed residuals stay close to zero, so the OLS pre-fits captures the main
 knitr::include_graphics(here("R_figures", "01d_residual.png"))
 ```
 
-After accounting for trend, seasonality, and day-of-week effects, residuals remain correlated over time (Figure 3a). On the kWh scale, the residual autocorrelation is 0.37 at lag 1 and still 0.26 at lag 3 and 0.18 at lag 7, far above the near-zero values an AR(1) process would give. The absence blocks explain part of this: they are 4% of days but 11% of the residual sum of squares, and removing them lowers the lag-1 autocorrelation to 0.29. What remains is a few days of memory, not a weekly cycle: the partial autocorrelation is 0.18–0.20 at lag 3 with or without the blocks, but only 0.05–0.08 at lag 7 (Figure 3b). So the AR order should be chosen by model comparison rather than fixed from the EDA. Residual spread is also seasonal (Figure 3c): the residual SD is about 11 kWh in February but under 4 kWh in September, matching the winter funneling in Figure 2b.
+```{r fig4, echo = FALSE, out.width = "100%",        fig.cap = "Figure 4. On the log scale, removing absence blocks cuts lag-1 partial autocorrelation from 0.58 to 0.38, but lags 2-4 remain significant."}
+knitr::include_graphics(here("R_figures", "01c_pacf.png"))
+```
+
+After accounting for trend, seasonality, and day-of-week effects, residuals remain correlated over time (Figure 3a). On the kWh scale, the residual autocorrelation is 0.37 at lag 1 and still 0.26 at lag 3 and 0.18 at lag 7, far above the near-zero values an AR(1) process would give. The absence blocks explain part of this: they are 4% of days but 11% of the residual sum of squares, and removing them lowers the lag-1 autocorrelation to 0.29. What remains is a few days of memory, not a weekly cycle: the partial autocorrelation is 0.18–0.20 at lag 3 with or without the blocks, but only 0.05–0.08 at lag 7 (Figure 3b). The log-scale partial autocorrelations tell the same story more sharply (Figure 4): removing the blocks cuts lag 1 from 0.58 to 0.38, but lags 2–4 remain significant. So the AR order should be chosen by model comparison rather than fixed from the EDA. Residual spread is also seasonal (Figure 3c): the residual SD is about 11 kWh in February but under 4 kWh in September, matching the winter funneling in Figure 2b.
 
 ## 2.4 Implications for Model
 
