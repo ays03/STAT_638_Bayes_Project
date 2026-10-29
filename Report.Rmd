@@ -225,3 +225,65 @@ There are several implications for our final Bayesian model, including but not l
 I think we should re-write this part bc with its current placement, it doesn't make much sense to explain what each variable is used for (bc we are past that step). We can just describe what we have rn (not what we did to initial dataset). \<---IMPORTANT!!!
 
 Of the nine recorded variables in the dataset, only `Global_active_power` enters the analysis after being transformed into daily energy. `Time` is used in data cleaning to verify every full day contains exactly 1440 unique minutes and in EDA to describe within-day usage. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The remaining electrical channels are discarded since`Global_reactive_power` and `Voltage` are irrelevant to active energy consumption, and `Global_intensity` is nearly collinear with `Global_active_power`. The three sub-metering channels are retained solely as a consistency check, since they do not sum to the whole-house total.
+
+# 3. Prior Distributions
+
+```{r prior-fig, include = FALSE}
+source(here("src", "03_prior_figure.R"))
+```
+
+```{r table2, echo = FALSE}
+tab2 <- data.frame(
+  Parameter = c(
+    "Intercept",
+    "Trend, harmonics, day of week",
+    "Innovation standard deviation",
+    "Autoregressive coefficient",
+    "Degrees of freedom",
+    "Missing days"
+  ),
+  `Kilowatt-hour prior` = c(
+    "$N(0, 100^2)$",
+    "$N(0, 40^2)$",
+    "half-$t$, 3 df, scale 20",
+    "Uniform on the stationary region",
+    "$\\nu - 2 \\sim$ Exponential(mean 10)",
+    "Implied by the model"
+  ),
+  `Log-scale prior` = c(
+    "$N(0, 5^2)$",
+    "$N(0, 2^2)$",
+    "half-$t$, 3 df, scale 1",
+    "Same",
+    "Same",
+    "Same"
+  ),
+  Role = c(
+    "Level at the midpoint of the record",
+    "Contrasts around that level",
+    "Size of a one-day shock",
+    "Day-to-day memory; forecasts stay bounded",
+    "Tail weight, with the variance finite",
+    "The 23 gaps are imputed"
+  ),
+  check.names = FALSE
+)
+knitr::kable(
+  tab2, escape = FALSE,
+  caption = "Table 2. Priors for the kilowatt-hour model and the log-scale candidates. The families match; only the coefficient and scale priors change with the response scale."
+)
+```
+
+```{r fig5, echo = FALSE, out.width = "100%", fig.cap = "Figure 5. Prior densities on the kilowatt-hour scale."}
+knitr::include_graphics(here("R_figures", "03_priors.png"))
+```
+
+Figure 5 draws the kilowatt-hour priors. In (a) the August–December gap of about 22 kWh is small beside priors with standard deviations 40 and 100; (b)–(d) are the half-$t$ scale, the stationary interval for the autoregressive coefficient, and the prior on the degrees of freedom.
+
+The priors are weakly informative and are coded explicitly in the Gibbs sampler for this series. Retained days average 26.2 kWh, with standard deviation 10.0 kWh and a range of about 4 to 80 kWh. Prior scales are set separately for the kilowatt-hour model and the log-scale candidates.
+
+On the kilowatt-hour scale, the intercept is $N(0, 100^2)$, and the yearly trend, annual harmonics, and day-of-week contrasts are each $N(0, 40^2)$. A shift of 40 kWh is larger than the difference between the August mean (about 14 kWh) and the December mean (about 36 kWh), and an intercept standard deviation of 100 covers levels outside the observed range. The priors are centered at zero because the trend is centered at the midpoint of the record, so the intercept is the level at that midpoint and the other coefficients are contrasts. With these scales, the likelihood determines the coefficients.
+
+The innovation standard deviation has a half-$t$ prior with 3 degrees of freedom and scale 20 kWh (Gelman, 2006). This prior is proper, positive, and heavy-tailed. The autoregressive coefficients are uniform on the stationary region, $(-1, 1)$ for an AR(1) and the analogous region for an AR(2), which keeps long-horizon forecasts bounded. The degrees of freedom satisfy an exponential prior with mean 10 on $\nu - 2$, so $\nu$ exceeds 2 and the innovation variance is finite, while both heavy tails and nearly Gaussian tails remain plausible. The 23 missing days have no separate prior; they are imputed from the regression and the autoregressive process.
+
+Log-scale candidates use the same families at smaller scales: standard deviation 5 for the intercept, 2 for the other coefficients, and half-$t$ scale 1.
