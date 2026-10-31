@@ -268,14 +268,6 @@ tab2 <- data.frame(
     "$\\nu - 2 \\sim$ Exponential(mean 10)",
     "Implied by the model"
   ),
-  `Log-scale prior` = c(
-    "$N(0, 5^2)$",
-    "$N(0, 2^2)$",
-    "half-$t$, 3 df, scale 1",
-    "Same",
-    "Same",
-    "Same"
-  ),
   Role = c(
     "Level at the midpoint of the record",
     "Contrasts around that level",
@@ -288,7 +280,7 @@ tab2 <- data.frame(
 )
 knitr::kable(
   tab2, escape = FALSE,
-  caption = "Table 2. Priors for the kilowatt-hour model and the log-scale candidates. The families match; only the coefficient and scale priors change with the response scale."
+  caption = "Table 2. Priors for the final kilowatt-hour model."
 )
 ```
 
@@ -298,10 +290,10 @@ knitr::include_graphics(here("R_figures", "03_priors.png"))
 
 In (a) the 22 kWh seasonal gap is small beside priors of width 40 and 100; (b)–(d) are scale, stationarity, and degrees of freedom.
 
-The priors are weakly informative and are coded explicitly in the Gibbs sampler. Retained days average 26.2 kWh, with standard deviation 10.0 kWh and a range of about 4 to 80 kWh. Scales differ for the kilowatt-hour model and the log-scale candidates (Table 2).
+The priors are weakly informative and are coded explicitly in the Gibbs sampler. Retained days average 26.2 kWh, with standard deviation 10.0 kWh and a range of about 4 to 80 kWh. Table 2 summarizes the priors for the final kilowatt-hour model.
 
 On the kilowatt-hour scale, the intercept is $N(0, 100^2)$, and the trend, harmonics, and day-of-week contrasts are each $N(0, 40^2)$. A shift of 40 kWh exceeds the gap between the August mean, about 14 kWh, and the December mean, about 36 kWh. The intercept prior reaches beyond observed levels. The priors are centered at zero because the trend is centered at the midpoint, so the intercept is the level there and the other coefficients are contrasts. The likelihood then determines the coefficients.
 
 The innovation standard deviation has a half-$t$ prior with 3 degrees of freedom and scale 20 kWh (Gelman, 2006): proper, positive, and heavy-tailed. Autoregressive coefficients are uniform on the stationary region, $(-1, 1)$ for an AR(1) and the analogous region for an AR(2), so long-horizon forecasts stay bounded. An exponential prior with mean 10 on $\nu - 2$ keeps $\nu$ above 2, so the variance is finite while heavy and nearly Gaussian tails both stay plausible. The 23 missing days are imputed from the regression and the autoregressive process, with no separate prior.
 
-Log-scale candidates use standard deviations 5 and 2, and a half-$t$ scale of 1.
+Together, these choices regularize the parameters without imposing a direction or size on the household's demand patterns in advance.
