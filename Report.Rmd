@@ -43,6 +43,8 @@ These scientific questions don't necessarily have to be answered with a Bayesian
 
 The UCI *Individual Household Electric Power Consumption* dataset records 2,075,259 one-minute electric power consumption measurements from a single house (not a grid) in Sceaux, France between December 2006 and November 2010 (47 months). Each instance contains nine recorded variables: `Date`, `Time`, `Global_active_power`,`Global_reactive_power`, `Voltage`, `Global_intensity`,`Sub_metering_1`,`Sub_metering_2`,and `Sub_metering_3`.
 
+Of the nine recorded variables in the dataset, only `Global_active_power` enters the analysis after being transformed into daily energy. `Time` is used in data cleaning to verify every full day contains exactly 1440 unique minutes and in EDA to describe within-day usage. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The remaining electrical channels are discarded since`Global_reactive_power` and `Voltage` are irrelevant to active energy consumption, and `Global_intensity` is nearly collinear with `Global_active_power`. The three sub-metering channels are retained solely as a consistency check, since they do not sum to the whole-house total.
+
 ### 1.3.2 Data Cleaning
 
 ```{r, eval=FALSE}
@@ -191,7 +193,7 @@ $Y_d$ is computed only for days retained under our 0.95 coverage rule, and other
 
 For the analysis, `daily.csv` is used. It contains the response variable $Y_d$ and other columns that were created based on the original dataset. The new columns are: `t`, `dow`, `n_obs`, `coverage`, `observed`, `sub_kwh`, `year`, `doy`. These new columns are essential for the model. (To rebuild `data/daily.csv`, download the UCI file into `data/` and set the above code chunk to `eval=TRUE`)
 
-# 2. Exploratory Data Analysis (EDA)
+# 2. Exploratory Data Analysis (EDA) and Bayesian Model
 
 ```{r eda-run, include = FALSE}
 source(here("src", "01d_indepth_eda_short_.R"))   # remakes R_figures/*.png and results/tables/table1_scale_check.csv
@@ -208,8 +210,6 @@ In the above panel, we look at daily household energy consumption throughout the
 ## 2.2 Response Variable  
 
 ### Missing Values  
-
-
 
 ```{r table1, echo = FALSE}
 tab1 <- read.csv(here("results", "tables", "table1_scale_check.csv"), check.names = FALSE)
@@ -240,23 +240,9 @@ After accounting for trend, seasonality, and day-of-week effects, residuals rema
 
 ## 2.4 Implications for Model
 
-There are several implications for our final Bayesian model, including but not limited to:
+Based on the previous sections, we can formulate our final Bayesian model. We want to account for day-of-week effects, seasonality, a long-term linear trend (even if the evidence for it is negligible), temporal dependency, and the absence periods. [INSERT LATEX EQUATION OF MODEL]
 
-1.  Systematic mean structure: daily consumption varies with long-term time, annual seasonality, and day of the week.
 
-2.  Response scale: the original kWh scale is preferable to the logarithmic transformation with respect to residual symmetry, although heteroscedasticity remains to be investigated ???????????.
-
-3.  Heavy tails: residual kurtosis is larger than the Gaussian benchmark, motivating consideration of a Student-(t) likelihood
-
-4.  Temporal dependence: residuals are not independent, and the appropriate dependence structure remains an empirical question to be resolved through comparison of candidate models.
-
-5.  Sustained unusual periods: some long stretches of low consumption may represent changes in household operating state rather than isolated random outliers, which may limit the ability of a simple autoregressive error model to describe or forecast these periods
-
-## 2.5 Final Dataset Description
-
-I think we should re-write this part bc with its current placement, it doesn't make much sense to explain what each variable is used for (bc we are past that step). We can just describe what we have rn (not what we did to initial dataset). \<---IMPORTANT!!!
-
-Of the nine recorded variables in the dataset, only `Global_active_power` enters the analysis after being transformed into daily energy. `Time` is used in data cleaning to verify every full day contains exactly 1440 unique minutes and in EDA to describe within-day usage. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The remaining electrical channels are discarded since`Global_reactive_power` and `Voltage` are irrelevant to active energy consumption, and `Global_intensity` is nearly collinear with `Global_active_power`. The three sub-metering channels are retained solely as a consistency check, since they do not sum to the whole-house total.
 
 # 3. Prior Distributions
 
