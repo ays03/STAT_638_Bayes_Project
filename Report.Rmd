@@ -1,7 +1,6 @@
 ---
 title: "Bayesian Forecasting of Household Electricity Demand"
-author: "Aysegul Buber"
-date: "2026-09-28"
+author: "Aysegul Buber, Aditya Hoskere Rajiv, Christopher Browy"
 output: html_document
 ---
 
@@ -162,6 +161,7 @@ Missing readings are coded as `?` in the raw file and dates are recorded day-fir
 # check where the missing days are !!! #
 ########################################
 d <- read.csv(here("data", "daily.csv")); d$date <- as.Date(d$date)
+d$observed <- as.logical(d$observed)
 blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
                c("2009-08-01","2009-08-08"), c("2010-07-29","2010-08-14"))
 in_block <- rep(FALSE, nrow(d))
