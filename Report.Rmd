@@ -209,8 +209,6 @@ In the above panel, we look at daily household energy consumption throughout the
 
 ## 2.2 Response Variable  
 
-### Missing Values  
-
 ```{r table1, echo = FALSE}
 tab1 <- read.csv(here("results", "tables", "table1_scale_check.csv"), check.names = FALSE)
 knitr::kable(tab1, caption = "Table 1. Residual summary on the kWh and log scales (OLS: trend + two harmonics + day of week). Normal errors have skew 0 and kurtosis 3.")
@@ -224,7 +222,24 @@ We then look at whether transforming $Y_d$ can improve our residual fit. We fit 
 knitr::include_graphics(here("R_figures", "01d_residual_checks.png"))
 ```
 
-The smoothed residuals stay close to zero, so the OLS pre-fits captures the main structure of the data (Figure 2a). There are still some uncaptured wiggles, so the 2 harmonics may not be capturing the seasonal effects perfectly. Three of the red absence blocks are in the summer, so these are likely when the household is away for vacation. Using t-errors and/or absence indicators can account for them as well as the shorter grey dips. AR errors also seem reasonable as residuals of the same sign tend to be consecutive. Residuals are independent of fitted values (Figure 2b), but there is mild funneling out (heteroscedasticity) at higher fitted values (winter). Log-transformation could reduce this mild heteroscedasticity but increasing skewness. We think t-errors will absorb some of the extreme fitted values here (less weight on them). Also, the funnel shape occurs partly due to the floor effect rather than true heteroskedasticity. Seasonal coverage of the predictive intervals will be checked in Section 6 to determine if this heteroskedasticity is a limitation of our proposed model. Lastly, the normal Q-Q plot shows heavy tails and symmetry, which is supported by Table1 and is exactly what the t-errors are aimed at.
+The smoothed residuals stay close to zero, so the OLS pre-fits captures the main structure of the data (Figure 2a). There are still some uncaptured wiggles, so the 2 harmonics may not be capturing the seasonal effects perfectly. Three of the red absence blocks are in the summer, so these are likely when the household is away for vacation. Using t-errors and/or absence indicators can account for them as well as the shorter grey dips. AR errors also seem reasonable as residuals of the same sign tend to be consecutive. Residuals are independent of fitted values (Figure 2b), but there is mild funneling out (heteroscedasticity) at higher fitted values (winter). Log-transformation could reduce this mild heteroscedasticity but increasing skewness. We think t-errors will absorb some of the extreme fitted values here (less weight on them). Also, the funnel shape occurs partly due to the floor effect rather than true heteroskedasticity. Seasonal coverage of the predictive intervals will be checked in Section 6 to determine if this heteroskedasticity is a limitation of our proposed model. Lastly, the normal Q-Q plot shows heavy tails and symmetry, which is supported by Table1 and is exactly what the t-errors are aimed at.  
+
+```{r}
+# check where the missing days are
+d <- read.csv(here("data", "daily.csv")); d$date <- as.Date(d$date)
+d$observed <- as.logical(d$observed)
+blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
+               c("2009-08-01","2009-08-08"), c("2010-07-29","2010-08-14"))
+in_block <- rep(FALSE, nrow(d))
+for (b in blocks) in_block[d$date >= as.Date(b[1]) - 3 & d$date <= as.Date(b[2]) + 3] <- TRUE
+
+miss <- !d$observed
+table(missing = miss, near_absence_block = in_block)     # are gaps/missing values clustered at vacations?
+nb <- sort(unique(c(which(miss) - 1, which(miss) + 1)))  # days right next to a gap
+nb <- nb[nb >= 1 & nb <= nrow(d) & !miss[nb]]
+c(next_to_gap = mean(d$kwh[nb]), all_days = mean(d$kwh, na.rm = TRUE))
+```
+Missing days are not clustered around vacations, so the recording meter is not off because of the household turning it off before an absence period.
 
 ## 2.3 Temporal Dependence
 
@@ -244,6 +259,8 @@ Based on the previous sections, we can formulate our final Bayesian model. We wa
 $z_{t}=x_{t}^{T}\beta+\varepsilon_{t},\hspace{0.5cm}x_{t}^{T}\beta = \beta_{0}+\beta_{1}\frac{t-\bar{t}}{365}+\sum_{j=1}^{J}\left[a_{j}\sin\frac{2\pi jt}{365}+b_{j}\cos\frac{2\pi jt}{365}\right]+\sum_{k=2}^{7}\delta_{k}1\left\{\text{dow}_{t} =k\right\},\hspace{0.5cm}\varepsilon_{t}=\sum_{l=1}^{p}\phi_{l}\varepsilon_{t-l}+\eta_{t},\hspace{0.5cm}\eta_{t}\sim t_{\nu}(0,\sigma^{2})$
 
 $\beta_{0}$ is our intercept, $\beta_{1}$ is our variable for the long-run linear trend, centered at the middle of our observations, $a_{j},b_{j}$ are our variables for the harmonic trends, and $\delta_{k}$ is our variable for day-of-week effects (with the base being Monday). Additionally, $\sum_{l=1}^{p}\phi_{l}\varepsilon_{t-l}$ is the autocorrelated error and $\varepsilon_{t}$ is the error that isn't explained by autocorrelation, following a t-distribution to account for the absence periods.
+
+Regarding the missing days, since they are not clustered around absence blocks/vacations, we assume that missing days are due to recording outages, which makes them missing at random (MAR). They also make up only 1.6% of the calendar. Since MAR cannot be verified from observed days, this remains an assumption. We will use Bayesian data augmentation using Gibbs sampling to handle the missingness so that the imputation uncertainty propagates into all posterior summaries and forecasts.
 
 # 3. Prior Distributions
 
