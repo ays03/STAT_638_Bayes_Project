@@ -240,9 +240,10 @@ After accounting for trend, seasonality, and day-of-week effects, residuals rema
 
 ## 2.4 Implications for Model
 
-Based on the previous sections, we can formulate our final Bayesian model. We want to account for day-of-week effects, seasonality, a long-term linear trend (even if the evidence for it is negligible), temporal dependency, and the absence periods. [INSERT LATEX EQUATION OF MODEL]
+Based on the previous sections, we can formulate our final Bayesian model. We want to account for day-of-week effects, seasonality, a long-term linear trend (even if the evidence for it is negligible), temporal dependency, and the absence periods. We use the below model:
+$z_{t}=x_{t}^{T}\beta+\varepsilon_{t},\hspace{0.5cm}x_{t}^{T}\beta = \beta_{0}+\beta_{1}\frac{t-\bar{t}}{365}+\sum_{j=1}^{J}\left[a_{j}\sin\frac{2\pi jt}{365}+b_{j}\cos\frac{2\pi jt}{365}\right]+\sum_{k=2}^{7}\delta_{k}1\left\{\text{dow}_{t} =k\right\},\hspace{0.5cm}\varepsilon_{t}=\sum_{l=1}^{p}\phi_{l}\varepsilon_{t-l}+\eta_{t},\hspace{0.5cm}\eta_{t}\sim t_{\nu}(0,\sigma^{2})$
 
-
+$\beta_{0}$ is our intercept, $\beta_{1}$ is our variable for the long-run linear trend, centered at the middle of our observations, $a_{j},b_{j}$ are our variables for the harmonic trends, and $\delta_{k}$ is our variable for day-of-week effects (with the base being Monday). Additionally, $\sum_{l=1}^{p}\phi_{l}\varepsilon_{t-l}$ is the autocorrelated error and $\varepsilon_{t}$ is the error that isn't explained by autocorrelation, following a t-distribution to account for the absence periods.
 
 # 3. Prior Distributions
 
