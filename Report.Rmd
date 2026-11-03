@@ -46,25 +46,11 @@ Of the nine recorded variables in the dataset, only `Global_active_power` enters
 
 ### 1.3.2 Data Cleaning
 
-```{r, eval=FALSE}
-# script_root <- function() {
-#   args <- commandArgs(trailingOnly = FALSE)
-#   file_arg <- grep("^--file=", args, value = TRUE)
-#   if (length(file_arg) == 0) return(normalizePath("."))
-#   dirname(normalizePath(sub("^--file=", "", file_arg[[1]])))   # no ".." anymore
-# }
-
-
-# skew_adj <- function(x) {
-#   x <- x[is.finite(x)]
-#   n <- length(x)
-#   xc <- x - mean(x)
-#   m2 <- sum(xc^2) / n
-#   m3 <- sum(xc^3) / n
-#   (m3 / m2^1.5) * sqrt(n * (n - 1)) / (n - 2)
-# }
-# 
-# comma <- function(x) format(as.numeric(x), big.mark = ",", scientific = FALSE, trim = TRUE)
+```{r, include = FALSE, eval = FALSE}
+# Hidden in the HTML and not run when knitting (the usual choice for a helper or check chunk)
+ # If want hidden in HTML but still run when knitting (ex: setup code whose results later chunks need
+ # use {r, include = FALSE}
+# outputs daily.csv
 
 load_minutes <- function(path) {
   df <- read.csv(
@@ -119,12 +105,14 @@ main <- function() {
   # first <- daily$date[1]
   # last <- daily$date[nrow(daily)]
   daily <- daily[-c(1, nrow(daily)), ] # removed partial first and last days
-  # every full day should have exactly 1,440 minutes (rows)
+  # every day should have all 1,440 minute rows (timestamps), even if some readings are "?"
   stopifnot(all(daily$n_rows == 1440))
   #build the full calendar and apply the 95% rule
   full_dates <- seq(min(daily$date), max(daily$date), by = "day")
   full <- merge(data.frame(date = full_dates), daily, by = "date", all.x = TRUE, sort = TRUE)
+  stopifnot(nrow(full) == nrow(daily))  # no calendar day is absent from the raw file
   full$n_obs[is.na(full$n_obs)] <- 0 # ensure missing days don't have NA, but have 0 instead to indicate no recordings
+  # coverage = minutes with a power reading / 1440; days below 95% are labelled missing
   full$coverage <- full$n_obs / MINUTES_PER_DAY
   # full$coverage[is.na(full$coverage)] <- 0
   full$observed <- full$coverage >= MIN_COVERAGE # mark the days with 95% coverage
@@ -154,26 +142,7 @@ main <- function() {
 main()
 ```
 
-Missing readings are coded as `?` in the raw file and dates are recorded day-first. Of the 2,075,259 minutes, 25,979 (1.25%) lack a power reading, and these appear consecutively instead of scattered single minutes. We dropped the first and last days of the dataset as they have partial measurements and verified that every remaining day has 1,440 minute rows with no duplicate time stamps. For each day we computed $\text{Coverage} = \text{observed minutes} / 1440$ and labeled days with $\text{Coverage} \geq 0.95$ as *observed*. For the observed days that had missing minutes, we filled each missing minute with that day's average power (the equivalent of scaling up the day's total to 1,440 minutes). Days below the threshold were kept on the calendar but treated as *missing* rather than deleted, so the daily series remains a sequence of consecutive days. Low-consumption periods ("absence blocks") are fully recorded, so they are not treated as missing days. In the end, we have 1417 observed days and 23 missing days (9 with no readings at all and 14 with coverage of readings below 95%). 
-
-```{r}
-########################################
-# check where the missing days are !!! #
-########################################
-d <- read.csv(here("data", "daily.csv")); d$date <- as.Date(d$date)
-d$observed <- as.logical(d$observed)
-blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
-               c("2009-08-01","2009-08-08"), c("2010-07-29","2010-08-14"))
-in_block <- rep(FALSE, nrow(d))
-for (b in blocks) in_block[d$date >= as.Date(b[1]) - 3 & d$date <= as.Date(b[2]) + 3] <- TRUE
-
-miss <- !d$observed
-table(missing = miss, near_absence_block = in_block)     # are gaps clustered at vacations?
-nb <- sort(unique(c(which(miss) - 1, which(miss) + 1)))  # days right next to a gap
-nb <- nb[nb >= 1 & nb <= nrow(d) & !miss[nb]]
-c(next_to_gap = mean(d$kwh[nb]), all_days = mean(d$kwh, na.rm = TRUE))
-```
-
+Missing readings are coded as `?` in the raw file and dates are recorded day-first. Of the 2,075,259 minutes, 25,979 (1.25%) lack a power reading. We dropped the first and last days of the dataset as they have partial measurements and verified that every remaining day has 1,440 minute rows with no duplicate time stamps. For each day we computed $\text{Coverage} = \text{observed minutes} / 1440$ and labeled days with $\text{Coverage} \geq 0.95$ as *observed*. For the observed days that had missing minutes, we filled each missing minute with that day's average power (the equivalent of scaling up the day's total to 1,440 minutes). Days below the threshold were kept on the calendar but treated as *missing* rather than deleted, so the daily series remains a sequence of consecutive days. Low-consumption periods ("absence blocks") are fully recorded, so they are not treated as missing days. In the end, we have 1417 observed days and 23 missing days (9 with no readings at all and 14 with coverage of readings below 95%). 
 
 As a consistency check, we verified that the sub-meter energy never exceeded the house total on any observed day.
 
@@ -191,7 +160,7 @@ Y_d &= \sum_{m=1}^{1440} E_m \\[6pt]
 
 $Y_d$ is computed only for days retained under our 0.95 coverage rule, and other days are treated as missing. $Y_d$ denotes the daily household energy consumption (kWh) and serves as our primary response variable for all subsequent analyses.
 
-For the analysis, `daily.csv` is used. It contains the response variable $Y_d$ and other columns that were created based on the original dataset. The new columns are: `t`, `dow`, `n_obs`, `coverage`, `observed`, `sub_kwh`, `year`, `doy`. These new columns are essential for the model. (To rebuild `data/daily.csv`, download the UCI file into `data/` and set the above code chunk to `eval=TRUE`)
+For the analysis, `daily.csv` is used. It contains the response variable $Y_d$ and other columns that were created based on the original dataset. The new columns are: `t`, `dow`, `n_obs`, `coverage`, `observed`, `sub_kwh`, `year`, `doy`. These new columns are essential for the model. (To rebuild `data/daily.csv`, download the UCI file into `data/` and run the above code chunk.)
 
 # 2. Exploratory Data Analysis (EDA) and Bayesian Model
 
@@ -209,14 +178,122 @@ In the above panel, we look at daily household energy consumption throughout the
 
 ## 2.2 Response Variable  
 
+We then look at whether transforming $Y_d$ can improve our residual fit. We fit the Ordinary Least Squares (OLS) regressions with intercept, linear trend, annual harmonics, and day-of-week effects for both $Y_d$ and $\log(Y_d)$. Since this is a time series data, we check the independence of errors through autocorrelation measurements. Based on whether the errors are independent or not, we will use an appropriate Box-Cox model to decide on a transformation of the response variable.
+
 ```{r table1, echo = FALSE}
-tab1 <- read.csv(here("results", "tables", "table1_scale_check.csv"), check.names = FALSE)
-knitr::kable(tab1, caption = "Table 1. Residual summary on the kWh and log scales (OLS: trend + two harmonics + day of week). Normal errors have skew 0 and kurtosis 3.")
+# WON'T NEED THIS TABLE ANYMORE !!!
+# tab1 <- read.csv(here("results", "tables", "table1_scale_check.csv"), check.names = FALSE)
+# knitr::kable(tab1, caption = "Table 1. Residual summary on the kWh and log scales (OLS: trend + two harmonics + day of week). Normal errors have skew 0 and kurtosis 3.")
 ```
 
-We then look at whether transforming $Y_d$ can improve our residual fit. We fit Ordinary Least Squares (OLS) regressions with intercept, linear trend, annual harmonics, and day-of-week effects for both $Y_d$ and $\log(Y_d)$. According to Table 1, the log transformation increases residual skewness and kurtosis, suggesting that untransformed $Y_d$ (skewness near 0) is best for our model. Kurtosis is large for both response variable specifications, which means we should use t-errors. Lastly, the lag-1 autocorrelation is 0.37 for $Y_d$, so we should use AR errors.
+```{r}
+# ACF of OLS residuals (trend + two harmonics + day of week), no AR term yet
+# Shows the day-to-day correlation (decide on AR(1) errors)
 
-(IDK if we still need this part???) However, the sustained absence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model.
+# assumes normal innovations, so the heavy tails can pull λ around
+d <- read.csv(here("data", "daily.csv")); d$date <- as.Date(d$date)
+y  <- d$kwh # NA on missing days is fine
+X  <- cbind(tc = (d$t - mean(d$t)) / 365,
+            s1 = sin(2*pi*d$t/365), c1 = cos(2*pi*d$t/365),
+            s2 = sin(4*pi*d$t/365), c2 = cos(4*pi*d$t/365),
+            model.matrix(~ factor(d$dow))[, -1]) # 6 weekday dummies; arima adds the intercept
+
+acf_row <- function(l, lags = c(1, 2, 3, 7)) {
+  z <- if (l == 0) log(d$kwh) else (d$kwh^l - 1) / l   # Box-Cox transform (l = 0 is log)
+  r <- residuals(lm(z ~ X, na.action = na.exclude)) # keeps NA on missing days, so lags line up
+  a <- acf(r, lag.max = max(lags), na.action = na.pass, plot = FALSE)$acf[lags + 1]
+  setNames(a, paste("Lag", lags))
+}
+acf_scales <- c("Log (λ = 0)" = 0, "Square root (λ = 0.5)" = 0.5, "kWh, no transform (λ = 1)" = 1)
+acf_tab <- t(sapply(acf_scales, acf_row))
+
+n_obs <- sum(!is.na(d$kwh))
+knitr::kable(round(acf_tab, 2),
+             caption = paste0("Table 1. Autocorrelation of OLS residuals (trend + two harmonics + ",
+                              "day of week) on each scale. Values beyond ±", round(1.96 / sqrt(n_obs), 2),
+                              " differ from zero at the 5% level."))
+```
+On every scale, the OLS residuals are strongly auto-correlated (lag-1 ACF of 0.37–0.59, far beyond the ±0.05 significance bound), so the Box–Cox comparison below uses a regression with AR(1) errors rather than assuming independent errors (Table 1).
+
+
+```{r}
+# Box-Cox that allows AR(1) errors 
+# 1) WITH absence blocks: 
+# assumes normal innovations, so the heavy tails can pull λ around
+y  <- d$kwh # NA on missing days is fine
+X  <- cbind(tc = (d$t - mean(d$t)) / 365,
+            s1 = sin(2*pi*d$t/365), c1 = cos(2*pi*d$t/365),
+            s2 = sin(4*pi*d$t/365), c2 = cos(4*pi*d$t/365),
+            model.matrix(~ factor(d$dow))[, -1]) # 6 weekday dummies; arima adds the intercept
+lams <- seq(-0.5, 1.5, by = 0.1)
+ll <- sapply(lams, function(l) {
+  z <- if (l == 0) log(y) else (y^l - 1) / l
+  fit <- arima(z, order = c(1, 0, 0), xreg = X)
+  fit$loglik + (l - 1) * sum(log(y), na.rm = TRUE)   # Jacobian, so scales are comparable
+})
+lams[which.max(ll)]
+#plot(lams, ll, type = "b", xlab = "lambda", ylab = "profile log-likelihood")
+
+
+# 2) WITHOUT absence blocks
+#Mark the absence-block days
+core <- rep(FALSE, nrow(d))
+for (b in blocks) core[d$date >= as.Date(b[1]) & d$date <= as.Date(b[2])] <- TRUE
+sum(core) # 57
+# Copy y and blank out absence-block days
+y_ex <- d$kwh
+y_ex[core] <- NA
+#profile likelihood on y_ex
+ll_ex <- sapply(lams, function(l) {
+  z <- if (l == 0) log(y_ex) else (y_ex^l - 1) / l
+  fit <- arima(z, order = c(1, 0, 0), xreg = X)
+  fit$loglik + (l - 1) * sum(log(y_ex), na.rm = TRUE)
+})
+lams[which.max(ll_ex)] # best lambda without the absence blocks
+
+
+
+# 3) Compare both curves (each shifted so its peak is at 0)
+plot(lams, ll - max(ll), type = "b", ylim = range(c(ll - max(ll), ll_ex - max(ll_ex))),
+     xlab = "lambda", ylab = "log-likelihood minus its maximum")
+lines(lams, ll_ex - max(ll_ex), type = "b", col = "red")
+abline(h = -qchisq(0.95, 1) / 2, lty = 2)   # points above this line are in the 95% CI
+legend("bottomleft", c("All observed days", "Absence blocks removed"),
+       col = c("black", "red"), lty = 1, bty = "n")
+
+
+# CHECK RESIDUAL DIAGNOSTICS (innovations from the regression with AR(1) errors)
+skew <- function(e) { e <- e[!is.na(e)]; mean((e - mean(e))^3) / sd(e)^3 }
+kurt <- function(e) { e <- e[!is.na(e)]; mean((e - mean(e))^4) / sd(e)^4 }
+fit_scale <- function(l) {
+  z <- if (l == 0) log(d$kwh) else (d$kwh^l - 1) / l   # Box-Cox transform (l = 0 is log)
+  arima(z, order = c(1, 0, 0), xreg = X)
+}
+lam_hat <- lams[which.max(ll)]                         # Box-Cox best lambda (0.4)
+mon <- format(d$date, "%m")
+scales <- c(0, lam_hat, 0.5, 1) # transformations to consider
+names(scales) <- c("Log (λ = 0)",
+                   paste0("Box-Cox best (λ = ", lam_hat, ")"),
+                   "Square root (λ = 0.5)",
+                   "kWh, no transform (λ = 1)")
+res <- lapply(scales, function(l) as.numeric(residuals(fit_scale(l))))
+cmp <- t(sapply(res, function(e) {
+  s <- tapply(e[!core], mon[!core], sd, na.rm = TRUE)   # monthly SD, absence-block days excluded
+  c(Skew = skew(e), Kurtosis = kurt(e), "Max/min monthly SD" = max(s) / min(s))
+}))
+knitr::kable(round(cmp, 2),
+             caption = paste("Table 2. Innovations from the regression with AR(1) errors",
+                             "(trend + two harmonics + day of week) on each scale.",
+                             "Normal errors have skew 0 and kurtosis 3."))
+# A Box–Cox profile likelihood allowing AR(1) errors favors λ ≈ 0.4 with or without the absence blocks. The square-root scale (λ = 0.5) gives nearly symmetric innovations (skew −0.07 vs 0.43), lighter tails, and more even monthly spread (SD ratio 1.96 vs 2.37), so we will model √kWh and report results in kWh through Monte Carlo transformation of posterior draws.
+
+```
+
+Lower $\lambda$ evens out the monthly spread but pushes skew negative: log over-corrects (skew −0.44, kurtosis 4.91). The square root balances the two, with nearly symmetric innovations (skew −0.07), the lowest kurtosis, and an SD ratio below 2, and is practically equivalent to the Box–Cox optimum ($\hat{\lambda} = 0.4$). Therefore, we will perform a square root transformation of our response variable Y ($log(Y)=log(\text{kWh})$). Kurtosis is large for all response variable specifications, which means we should use a t-error innovation. 
+
+# **NOT NEED THIS ANYMORE:**According to Table 1, the log transformation increases residual skewness and kurtosis, suggesting that untransformed $Y_d$ (skewness near 0) is best for our model. 
+
+# **(IDK if we still need this part???)**However, the sustained absence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model.
 
 ```{r fig2, echo = FALSE, out.width = "100%",        fig.cap = "Figure 2. OLS residuals on the kWh scale: (a) over time, with low-use block days in red; (b) against fitted values; (c) normal Q-Q plot."}
 knitr::include_graphics(here("R_figures", "01d_residual_checks.png"))
@@ -233,13 +310,24 @@ blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
 in_block <- rep(FALSE, nrow(d))
 for (b in blocks) in_block[d$date >= as.Date(b[1]) - 3 & d$date <= as.Date(b[2]) + 3] <- TRUE
 
+
+# are gaps/missing values clustered at vacations?
 miss <- !d$observed
-table(missing = miss, near_absence_block = in_block)     # are gaps/missing values clustered at vacations?
-nb <- sort(unique(c(which(miss) - 1, which(miss) + 1)))  # days right next to a gap
-nb <- nb[nb >= 1 & nb <= nrow(d) & !miss[nb]]
-c(next_to_gap = mean(d$kwh[nb]), all_days = mean(d$kwh, na.rm = TRUE))
+miss_rates <- data.frame(
+  Group = c("All calendar days",
+            "Days within 3 days of an absence block",
+            "All other days"),
+  Days = c(length(miss), sum(in_block), sum(!in_block)),
+  Missing = c(sum(miss), sum(miss & in_block), sum(miss & !in_block))
+)
+miss_rates$`% missing` <- round(100 * miss_rates$Missing / miss_rates$Days, 1)
+
+knitr::kable(miss_rates, align = "lrrr",
+             caption = "Share of days missing, overall and near absence blocks.") |>
+  kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
 ```
-Missing days are not clustered around vacations, so the recording meter is not off because of the household turning it off before an absence period.
+
+Missing days are not clustered around absence periods (1.2% of days within three days of an absence block are missing, versus 1.6% elsewhere), so they appear to come from recording outages rather than from the meter being switched off before a vacation. This is consistent with missingness at random (MAR), and the missing days make up only 1.6% of the calendar. Since MAR cannot be verified from the observed data, it remains an assumption
 
 ## 2.3 Temporal Dependence
 
@@ -260,7 +348,7 @@ $z_{t}=x_{t}^{T}\beta+\varepsilon_{t},\hspace{0.5cm}x_{t}^{T}\beta = \beta_{0}+\
 
 $\beta_{0}$ is our intercept, $\beta_{1}$ is our variable for the long-run linear trend, centered at the middle of our observations, $a_{j},b_{j}$ are our variables for the harmonic trends, and $\delta_{k}$ is our variable for day-of-week effects (with the base being Monday). Additionally, $\sum_{l=1}^{p}\phi_{l}\varepsilon_{t-l}$ is the autocorrelated error and $\varepsilon_{t}$ is the error that isn't explained by autocorrelation, following a t-distribution to account for the absence periods.
 
-Regarding the missing days, since they are not clustered around absence blocks/vacations, we assume that missing days are due to recording outages, which makes them missing at random (MAR). They also make up only 1.6% of the calendar. Since MAR cannot be verified from observed days, this remains an assumption. We will use Bayesian data augmentation using Gibbs sampling to handle the missingness so that the imputation uncertainty propagates into all posterior summaries and forecasts.
+We will use Bayesian data augmentation using Gibbs sampling to handle the missing days that are MAR (section 2.2) so that the imputation uncertainty propagates into all posterior summaries and forecasts.
 
 # 3. Prior Distributions
 
