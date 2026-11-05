@@ -327,7 +327,7 @@ knitr::kable(miss_rates, align = "lrrr",
   kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
 ```
 
-Missing days are not clustered around absence periods (1.2% of days within three days of an absence block are missing, versus 1.6% elsewhere), so they appear to come from recording outages rather than from the meter being switched off before a vacation. This is consistent with missingness at random (MAR), and the missing days make up only 1.6% of the calendar. Since MAR cannot be verified from the observed data, it remains an assumption
+Missing days are not clustered around absence periods (1.2% of days within three days of an absence block are missing, versus 1.6% elsewhere), so they appear to come from recording outages rather than from the meter being switched off before a vacation. This is consistent with missingness at random (MAR), and the missing days make up only 1.6% of the calendar. Since MAR cannot be verified from the observed data, it remains an assumption.
 
 ## 2.3 Temporal Dependence
 
