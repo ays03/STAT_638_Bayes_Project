@@ -9,6 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+# required packages: here, knitr, kableExtra
 library(here)
 ```
 
@@ -171,8 +172,182 @@ source(here("src", "01d_indepth_eda_short_.R"))   # remakes R_figures/*.png and 
 ## 2.1 General Patterns
 
 ```{r fig1, echo = FALSE, out.width = "100%",        fig.cap = "Figure 1. (a) Daily consumption with missing days marked in red; (b) annual shape by year with one- and two-harmonic fits; (c) weekly pattern."}
+# DON'T NEED THIS CHUNK ANYMORE (NEW CODE BELOW)
+# knitr::include_graphics(here("R_figures", "01d_overview.png"))
+```
+
+```{r fig1, echo = FALSE, out.width = "100%", fig.cap = "Figure 1. (a) Daily consumption with missing days marked in red; (b) daily data coverage with the 95% threshold; (c) annual shape by year with one- and two-harmonic fits; (d) weekdays versus weekends; (e) consumption by day of week."}
+# ---- Figure 1 (data overview), code taken from src/01d_indepth_eda_short_.R
+ORIGIN <- as.Date("2006-12-17")   # t = 1
+MONTHS <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+DOW_NAMES <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+MIN_COVERAGE <- 0.95              # 95% retention rule used in 01_aggregate.R (for Figure 1b)
+
+library(here)   # install.packages("here") once; project root = folder containing .here
+
+# [HELPERS] used by Figure 1
+read_daily <- function(path) {
+  d <- read.csv(path, stringsAsFactors = FALSE)
+  d$date <- as.Date(d$date)
+  d$observed <- tolower(as.character(d$observed)) %in% c("true", "t", "1")
+  d
+}
+
+ols <- function(X, y) {
+  beta <- qr.solve(X, y)
+  list(beta = beta, resid = as.numeric(y - X %*% beta))
+}
+
+clim_day <- function(dates) {
+  dates <- as.Date(dates)
+  doy <- as.integer(format(dates, "%j"))
+  y <- as.integer(format(dates, "%Y"))
+  m <- as.integer(format(dates, "%m"))
+  day <- as.integer(format(dates, "%d"))
+  leap <- (y %% 4 == 0 & (y %% 100 != 0 | y %% 400 == 0))
+  d <- as.numeric(doy)
+  d[leap & m > 2] <- d[leap & m > 2] - 1
+  d[m == 2 & day == 29] <- NA_real_
+  d
+}
+
+smooth_on_clim <- function(clim, values, window = 15, circular = TRUE, min_frac = 0.6) {
+  half <- window %/% 2
+  s <- numeric(365)
+  cnt <- numeric(365)
+  for (i in seq_along(clim)) {
+    if (is.na(clim[i]) || is.na(values[i])) next
+    s[as.integer(clim[i])] <- s[as.integer(clim[i])] + values[i]
+    cnt[as.integer(clim[i])] <- cnt[as.integer(clim[i])] + 1
+  }
+  out <- rep(NA_real_, 365)
+  for (i in 0:364) {
+    if (circular) idx <- ((i + (-half:half)) %% 365) + 1L
+    else {
+      ks <- (-half:half)
+      ks <- ks[i + ks >= 0 & i + ks < 365]
+      idx <- i + ks + 1L
+    }
+    cc <- sum(cnt[idx])
+    if (cc >= window * min_frac) out[i + 1L] <- sum(s[idx]) / cc
+  }
+  out
+}
+
+dow_dummies <- function(dow, drop = 0) {
+  levels <- setdiff(0:6, drop)
+  out <- vapply(levels, function(k) as.numeric(dow == k), numeric(length(dow)))
+  if (is.null(dim(out))) out <- matrix(out, ncol = 1)
+  list(X = out, levels = levels)
+}
+
+harmonic_cols <- function(t, J) {
+  if (J <= 0) return(matrix(0, length(t), 0))
+  cols <- vector("list", 2 * J)
+  k <- 1L
+  for (j in seq_len(J)) {
+    w <- 2 * pi * j * t / 365
+    cols[[k]] <- sin(w); k <- k + 1L
+    cols[[k]] <- cos(w); k <- k + 1L
+  }
+  do.call(cbind, cols)
+}
+
+harmonic_on_dates <- function(beta_harm, dates, J) {
+  tt <- as.numeric(as.Date(dates) - ORIGIN) + 1
+  h <- numeric(length(dates))
+  for (j in seq_len(J)) {
+    w <- 2 * pi * j * tt / 365
+    h <- h + beta_harm[2 * j - 1] * sin(w) + beta_harm[2 * j] * cos(w)
+  }
+  h
+}
+
+# [DATA] read the cleaned daily series and set up the variables
+dir.create(here("R_figures"), showWarnings = FALSE)
+
+d <- read_daily(here("data", "daily.csv"))
+obs <- d[d$observed, ]
+rownames(obs) <- NULL
+
+y <- as.numeric(obs$kwh)
+t <- as.numeric(obs$t)
+dow <- as.integer(obs$dow)
+month <- as.integer(format(obs$date, "%m"))
+year <- as.integer(obs$year)
+Dd <- dow_dummies(dow, 0)$X
+
+# harmonic shape (for Fig 1c)
+ref_dates <- seq(as.Date("2009-01-01"), as.Date("2009-12-31"), by = "day")
+curves <- list()
+for (J in 1:2) {
+  fitJ <- ols(cbind(1, t / 365, harmonic_cols(t, J), Dd), y)
+  harm <- fitJ$beta[3:(2 + 2 * J)]
+  raw_curve <- harmonic_on_dates(harm, ref_dates, J)
+  curve_J <- raw_curve - mean(raw_curve) + mean(y[year %in% 2007:2009])
+  curves[[J]] <- curve_J
+}
+month_means <- vapply(1:12, function(m) mean(y[month == m]), numeric(1))
+
+# [FIGURE 1] data overview -> R_figures/01d_overview.png
+year_colors <- c("2007" = "#6c3483", "2008" = "#1f4e79", "2009" = "#148f77", "2010" = "#b9770e")
+clim <- clim_day(obs$date)
+smooths <- lapply(names(year_colors), function(yr) {
+  sel <- year == as.integer(yr)
+  smooth_on_clim(clim[sel], y[sel], window = 15, circular = yr != "2010")
+})
+mids <- integer(12)
+for (m in 1:12) {
+  days <- ref_dates[as.integer(format(ref_dates, "%m")) == m]
+  mids[m] <- as.integer(format(days[length(days) %/% 2 + 1L], "%j"))
+}
+
+png(here("R_figures", "01d_overview.png"), width = 14, height = 10.5, units = "in", res = 140)
+layout(matrix(c(1, 1, 1,
+                2, 2, 2,
+                3, 4, 5), nrow = 3, byrow = TRUE),
+       heights = c(1, 0.6, 1.2), widths = c(1.5, 0.6, 1.1))
+par(mar = c(4, 4, 3, 1))
+
+# (a) daily series on the full calendar (missing days appear as gaps)
+plot(d$date, d$kwh, type = "l", lwd = 0.5, col = "#1f4e79", xlab = "", ylab = "kWh / day",
+     main = "(a) Daily household electricity consumption, Dec 2006 - Nov 2010")
+rug(d$date[!d$observed], col = "#b03a2e", lwd = 1.5)
+legend("topright", legend = c("daily kWh", "missing day"), col = c("#1f4e79", "#b03a2e"),
+       lwd = c(1, 1.5), cex = 0.75, bty = "n")
+
+# (b) daily data coverage: fraction of the 1,440 minutes with a reading; days below the
+#     dashed 95% line are treated as missing (d = full calendar from daily.csv)
+plot(d$date, d$coverage, type = "h", lwd = 0.6, col = "#b03a2e",
+     ylab = "fraction of 1440 min observed", xlab = "", main = "(b) Daily data coverage", ylim = c(0, 1))
+abline(h = MIN_COVERAGE, lty = 2)
+legend("bottomright", legend = sprintf("retention threshold %.2f", MIN_COVERAGE), lty = 2, bty = "n", cex = 0.8)
+
+# (c) annual shape by year, with one- and two-harmonic fits and monthly means
+plot(NA, xlim = c(1, 365), ylim = range(c(unlist(smooths), unlist(curves), month_means), na.rm = TRUE),
+     xaxt = "n", xlab = "", ylab = "kWh / day", main = "(c) Annual shape by year")
+for (i in seq_along(smooths)) lines(1:365, smooths[[i]], col = year_colors[[i]], lwd = 1.15)
+lines(1:365, curves[[1]], col = "#2c3e50", lwd = 1.15, lty = 2)
+lines(1:365, curves[[2]], col = "#b03a2e", lwd = 2)
+points(mids, month_means, pch = 16, cex = 0.6)
+axis(1, at = mids, labels = substr(MONTHS, 1, 1))
+legend("bottomleft", legend = c(names(year_colors), "one harmonic", "two harmonics", "month mean"),
+       col = c(year_colors, "#2c3e50", "#b03a2e", "black"), lty = c(1, 1, 1, 1, 2, 1, NA),
+       pch = c(NA, NA, NA, NA, NA, NA, 16), lwd = c(1, 1, 1, 1, 1, 2, NA), cex = 0.65, ncol = 2, bty = "n")
+
+# (d) weekday vs weekend (dow 0-4 = Mon-Fri, 5-6 = Sat-Sun); same y-axis as (e) for comparison
+boxplot(split(y, factor(ifelse(dow >= 5, "Weekend", "Weekday"), levels = c("Weekday", "Weekend"))),
+        col = "#d6eaf8", ylim = range(y), ylab = "kWh / day", main = "(d) Weekday vs weekend")
+
+# (e) weekly pattern by day: do individual days differ beyond the weekday/weekend split?
+boxplot(split(y, factor(dow, levels = 0:6)), names = DOW_NAMES, col = "#d6eaf8",
+        ylim = range(y), ylab = "kWh / day", main = "(e) Weekly pattern by day")
+dev.off()
+
+# show the saved figure in the knitted HTML
 knitr::include_graphics(here("R_figures", "01d_overview.png"))
 ```
+
 
 In the above panel, we look at daily household energy consumption throughout the whole time series, as well as its seasonal and weekly variation. As we can see in Figure 1a, daily household energy consumption has a clear yearly wave, but no real overall drift, pointing to negligible long-run changes but substantial seasonal variation. Looking at the seasonal variation, our data is an intuitive U-shape, higher electricity consumption in the winter months and lower electricity consumption in the summer months, with a relatively smooth shape- both harmonics seem to fit the overall pattern. Lastly, looking at the weekly variation, we can see that there are recurring differences across the seven days of the week, especially with Saturday and Sunday having slightly higher means and larger Interquartile ranges (IQRs) than weekdays. Overall, weekends are higher than weekdays (Figure 1d), but the weekdays also differ (Figure 1e). Therefore, we use day-of-week effect and will later compare a weekend indicator with day-of-week effect.
 
@@ -181,7 +356,7 @@ In the above panel, we look at daily household energy consumption throughout the
 We then look at whether transforming $Y_d$ can improve our residual fit. We fit the Ordinary Least Squares (OLS) regressions with intercept, linear trend, annual harmonics, and day-of-week effects for both $Y_d$ and $\log(Y_d)$. Since this is a time series data, we check the independence of errors through autocorrelation measurements. Based on whether the errors are independent or not, we will use an appropriate Box-Cox model to decide on a transformation of the response variable.
 
 ```{r table1, echo = FALSE}
-# WON'T NEED THIS TABLE ANYMORE !!!
+# WON'T NEED THIS TABLE ANYMORE !!! (NEW CODE BELOW)
 # tab1 <- read.csv(here("results", "tables", "table1_scale_check.csv"), check.names = FALSE)
 # knitr::kable(tab1, caption = "Table 1. Residual summary on the kWh and log scales (OLS: trend + two harmonics + day of week). Normal errors have skew 0 and kurtosis 3.")
 ```
@@ -194,8 +369,15 @@ X  <- cbind(tc = (d$t - mean(d$t)) / 365,
             s1 = sin(2*pi*d$t/365), c1 = cos(2*pi*d$t/365),
             s2 = sin(4*pi*d$t/365), c2 = cos(4*pi*d$t/365),
             model.matrix(~ factor(d$dow))[, -1]) # 6 weekday dummies; arima adds the intercept
-blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
-               c("2009-08-01","2009-08-08"), c("2010-07-29","2010-08-14"))
+
+# Absence blocks: runs of >= 5 consecutive observed days below 12 kWh (EDA rule)
+low <- !is.na(d$kwh) & d$kwh < 12
+r <- rle(low)
+ends <- cumsum(r$lengths) 
+starts <- ends - r$lengths + 1
+idx <- which(r$values & r$lengths >= 5)
+blocks <- lapply(idx, function(i) as.character(d$date[c(starts[i], ends[i])]))
+blocks   # should list the same 4 blocks
 
 ```
 
@@ -296,25 +478,93 @@ knitr::kable(round(cmp, 2),
 
 ```
 
-Lower $\lambda$ evens out the monthly spread but pushes skew negative: log over-corrects (skew −0.44, kurtosis 4.91). The square root balances the two, with nearly symmetric innovations (skew −0.07), the lowest kurtosis, and an SD ratio below 2, and is practically equivalent to the Box–Cox optimum ($\hat{\lambda} = 0.4$). Therefore, we will perform a square root transformation of our response variable Y ($log(Y)=log(\text{kWh})$). Kurtosis is large for all response variable specifications, which means we should use a t-error innovation. 
-
-# NExt task: now...we need to re-create the figures that are created in the attached file:
-1) look for functions that we already included in the attached/pasted code chunks. Tellme which functions in the attached .R file called indepth edashort are already in the pasted code chunks so that I don't copy them over to the RMD file again. Then...
-2) identify which lines from the .R file need to be carried over to the RMD report in order to re-create the figures
-
-# **NOT NEED THIS ANYMORE:**According to Table 1, the log transformation increases residual skewness and kurtosis, suggesting that untransformed $Y_d$ (skewness near 0) is best for our model. 
+Lower $\lambda$ evens out the monthly spread but pushes skew negative: log over-corrects (skew −0.44, kurtosis 4.91). The square root balances the two, with nearly symmetric innovations (skew −0.07), the lowest kurtosis, and an SD ratio below 2, and is practically equivalent to the Box–Cox optimum ($\hat{\lambda} = 0.4$). Therefore, we will perform a square root transformation of our response variable Y ($\sqrt{Y}=\sqrt{\text{kWh}}$). Kurtosis is large for all response variable specifications, which means we should use a t-error innovation. 
 
 # **(IDK if we still need this part???)**However, the sustained absence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model.
 
+
 ```{r fig2, echo = FALSE, out.width = "100%",        fig.cap = "Figure 2. OLS residuals on the kWh scale: (a) over time, with low-use block days in red; (b) against fitted values; (c) normal Q-Q plot."}
-knitr::include_graphics(here("R_figures", "01d_residual_checks.png"))
+# DON'T NEED THIS CHUNK ANYMORE (NEW CODE BELOW)
+#knitr::include_graphics(here("R_figures", "01d_residual_checks.png"))
 ```
 
-The smoothed residuals stay close to zero, so the OLS pre-fits captures the main structure of the data (Figure 2a). There are still some uncaptured wiggles, so the 2 harmonics may not be capturing the seasonal effects perfectly. Three of the red absence blocks are in the summer, so these are likely when the household is away for vacation. Using t-errors and/or absence indicators can account for them as well as the shorter grey dips. AR errors also seem reasonable as residuals of the same sign tend to be consecutive. Residuals are independent of fitted values (Figure 2b), but there is mild funneling out (heteroscedasticity) at higher fitted values (winter). Log-transformation could reduce this mild heteroscedasticity but increasing skewness. We think t-errors will absorb some of the extreme fitted values here (less weight on them). Also, the funnel shape occurs partly due to the floor effect rather than true heteroskedasticity. Seasonal coverage of the predictive intervals will be checked in Section 6 to determine if this heteroskedasticity is a limitation of our proposed model. Lastly, the normal Q-Q plot shows heavy tails and symmetry, which is supported by Table1 and is exactly what the t-errors are aimed at.  
+```{r fig2, echo = FALSE, out.width = "100%", fig.cap = "Figure 2. Residual checks on the square-root scale, using innovations from the regression with AR(1) errors (trend + two harmonics + day of week): (a) over time, with low-use block days in red; (b) against one-step fitted values; (c) normal Q-Q plot."}
+# ---- Figure 2 (residual checks), adapted from [FIGURE 2] in src/01d_indepth_eda_short_.R ----
+# Uses objects from the fig1 chunk: d, obs, y (kWh), harmonic_cols(), dow_dummies(), here()
+
+# helpers used by Figure 2 (unchanged from the script)
+skew_adj <- function(x) {
+  x <- x[is.finite(x)]
+  n <- length(x)
+  xc <- x - mean(x)
+  m2 <- sum(xc^2) / n
+  m3 <- sum(xc^3) / n
+  (m3 / m2^1.5) * sqrt(n * (n - 1)) / (n - 2)
+}
+
+# runs of >= `run` consecutive retained days below `threshold` kWh (absence blocks)
+low_use_mask <- function(kwh, run = 5, threshold = 12) {
+  low <- kwh < threshold
+  block <- rep(FALSE, length(kwh))
+  i <- 1L
+  n <- length(kwh)
+  while (i <= n) {
+    if (isTRUE(low[i])) {
+      j <- i
+      while (j + 1L <= n && isTRUE(low[j + 1L])) j <- j + 1L
+      if (j - i + 1L >= run) block[i:j] <- TRUE
+      i <- j + 1L
+    } else i <- i + 1L
+  }
+  block
+}
+
+# absence blocks: defined on the kWh scale (>= 5 consecutive days below 12 kWh)
+block <- low_use_mask(y)
+
+# residuals on the modelling scale, sqrt(kWh), from the regression with AR(1) errors
+#   fitted on the full calendar (NA on missing days) so AR lags follow real calendar days
+z_full <- sqrt(d$kwh)
+X_full <- cbind(d$t / 365, harmonic_cols(d$t, 2), dow_dummies(d$dow, 0)$X)  # trend, 2 harmonics, 6 dow dummies; arima adds the intercept
+fit_ar <- arima(z_full, order = c(1, 0, 0), xreg = X_full)
+resid_sq <- as.numeric(residuals(fit_ar))[d$observed]   # innovations on observed days
+fit_sq   <- sqrt(y) - resid_sq                           # one-step fitted values (sqrt kWh)
+
+png(here("R_figures", "01d_residual_checks_sqrt.png"), width = 12, height = 7.5, units = "in", res = 140)
+layout(matrix(c(1, 1,
+                2, 3), nrow = 2, byrow = TRUE))
+par(mar = c(4, 4, 3, 1))
+
+# (a) residuals over time
+plot(obs$date, resid_sq, type = "h", col = ifelse(block, "#b03a2e", "grey55"),
+     xlab = "", ylab = "residual (sqrt kWh)",
+     main = "(a) Residuals over time (sqrt kWh, AR(1) errors) after trend, two harmonics, day of week")
+abline(h = 0)
+sm <- lowess(as.numeric(obs$date), resid_sq, f = 0.1)     # should stay near 0
+lines(as.Date(sm$x, origin = "1970-01-01"), sm$y, col = "#1f4e79", lwd = 2)
+legend("topright", legend = c("residual", "low-use block day", "smoothed residual"),
+       col = c("grey55", "#b03a2e", "#1f4e79"), lwd = c(1, 1, 2), cex = 0.75, bty = "n")
+
+# (b) residual vs fitted
+plot(fit_sq, resid_sq, pch = 16, cex = 0.4, col = adjustcolor("#1f4e79", 0.4),
+     xlab = "fitted (sqrt kWh)", ylab = "residual (sqrt kWh)", main = "(b) Residual vs fitted")
+abline(h = 0)
+lines(lowess(fit_sq, resid_sq), col = "#b03a2e", lwd = 1.5)
+
+# (c) normal Q-Q
+qqnorm(resid_sq / sd(resid_sq), pch = 16, cex = 0.4, col = adjustcolor("#1f4e79", 0.5),
+       main = sprintf("(c) Normal Q-Q (skew %.2f)", skew_adj(resid_sq)))
+qqline(resid_sq / sd(resid_sq))
+dev.off()
+
+# show the saved figure in the knitted HTML
+knitr::include_graphics(here("R_figures", "01d_residual_checks_sqrt.png"))
+```
+
+The smoothed residuals stay close to zero, so the regression with AR(1) errors captures the main structure of the data (Figure 2a). There are still some small uncaptured wiggles, so the two harmonics may not capture the seasonal effects perfectly. Three of the red absence blocks are in the summer, so these are likely when the household is away on vacation. Even after accounting for the AR(1) carry-over, the residuals within the absence blocks stay negative for many consecutive days, while elsewhere the residuals show no long same-sign runs. This suggests AR(1) captures the ordinary day-to-day dependence, and the t errors are needed to absorb (less weight on them) the absence blocks as well as the shorter grey dips. On the square-root scale, the residuals show no clear funnel shape against the fitted values (Figure 2b), so there is no heteroscedasticity after the transformation. The smoothed curve bends slightly downward at both ends, where there are few points. At the low end this is partly a floor effect from absence days rather than a misfit of the mean. Seasonal coverage of the predictive intervals will be checked in Section 6 to confirm that any remaining heteroskedasticity is not a limitation of our model. Lastly, the normal Q-Q plot shows symmetric residuals (skew −0.07) with heavy tails at both ends, which is supported by Table 2 and is exactly what the t errors are aimed at.
 
 ```{r}
 # check where the missing days are
-d <- read.csv(here("data", "daily.csv")); d$date <- as.Date(d$date)
 d$observed <- as.logical(d$observed)
 # blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
 #                c("2009-08-01","2009-08-08"), c("2010-07-29","2010-08-14"))
@@ -326,7 +576,7 @@ for (b in blocks) in_block[d$date >= as.Date(b[1]) - 3 & d$date <= as.Date(b[2])
 miss <- !d$observed
 miss_rates <- data.frame(
   Group = c("All calendar days",
-            "Days within 3 days of an absence block",
+            "Days in or within 3 days of an absence block",
             "All other days"),
   Days = c(length(miss), sum(in_block), sum(!in_block)),
   Missing = c(sum(miss), sum(miss & in_block), sum(miss & !in_block))
@@ -334,12 +584,13 @@ miss_rates <- data.frame(
 miss_rates$`% missing` <- round(100 * miss_rates$Missing / miss_rates$Days, 1)
 
 knitr::kable(miss_rates, align = "lrrr",
-             caption = "Share of days missing, overall and near absence blocks.") |>
+             caption = "Table 3. Share of days missing, overall and near absence blocks.") |>
   kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
 ```
 
-Missing days are not clustered around absence periods (1.2% of days within three days of an absence block are missing, versus 1.6% elsewhere), so they appear to come from recording outages rather than from the meter being switched off before a vacation. This is consistent with missingness at random (MAR), and the missing days make up only 1.6% of the calendar. Since MAR cannot be verified from the observed data, it remains an assumption.
+Missing days are not clustered around absence periods (Table 3: 1.2% of days in or within three days of an absence block are missing, versus 1.6% elsewhere), so they appear to come from recording outages rather than from the meter being switched off before a vacation. This is consistent with missingness at random, and the missing days make up only 1.6% of the calendar. Since MAR cannot be verified from the observed data, it remains an assumption.
 
+# HERE! 
 ## 2.3 Temporal Dependence
 
 ```{r fig3, echo = FALSE, out.width = "100%",        fig.cap = "Figure 3. Absence blocks inflate residual autocorrelation; what remains is a few days of memory, and February stays more variable than September. (a) Residual ACF and (b) residual PACF on the kWh scale, for all retained days (bars) and with low-use blocks removed (red); (c) residual SD by month."}
