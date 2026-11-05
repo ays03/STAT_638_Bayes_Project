@@ -186,18 +186,25 @@ We then look at whether transforming $Y_d$ can improve our residual fit. We fit 
 # knitr::kable(tab1, caption = "Table 1. Residual summary on the kWh and log scales (OLS: trend + two harmonics + day of week). Normal errors have skew 0 and kurtosis 3.")
 ```
 
-```{r}
-# ACF of OLS residuals (trend + two harmonics + day of week), no AR term yet
-# Shows the day-to-day correlation (decide on AR(1) errors)
 
-# assumes normal innovations, so the heavy tails can pull λ around
+```{r, include=FALSE}
 d <- read.csv(here("data", "daily.csv")); d$date <- as.Date(d$date)
 y  <- d$kwh # NA on missing days is fine
 X  <- cbind(tc = (d$t - mean(d$t)) / 365,
             s1 = sin(2*pi*d$t/365), c1 = cos(2*pi*d$t/365),
             s2 = sin(4*pi*d$t/365), c2 = cos(4*pi*d$t/365),
             model.matrix(~ factor(d$dow))[, -1]) # 6 weekday dummies; arima adds the intercept
+blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
+               c("2009-08-01","2009-08-08"), c("2010-07-29","2010-08-14"))
 
+```
+
+
+```{r}
+# ACF of OLS residuals (trend + two harmonics + day of week), no AR term yet
+# Shows the day-to-day correlation (decide on AR(1) errors)
+
+# assumes normal innovations, so the heavy tails can pull λ around
 acf_row <- function(l, lags = c(1, 2, 3, 7)) {
   z <- if (l == 0) log(d$kwh) else (d$kwh^l - 1) / l   # Box-Cox transform (l = 0 is log)
   r <- residuals(lm(z ~ X, na.action = na.exclude)) # keeps NA on missing days, so lags line up
@@ -291,6 +298,10 @@ knitr::kable(round(cmp, 2),
 
 Lower $\lambda$ evens out the monthly spread but pushes skew negative: log over-corrects (skew −0.44, kurtosis 4.91). The square root balances the two, with nearly symmetric innovations (skew −0.07), the lowest kurtosis, and an SD ratio below 2, and is practically equivalent to the Box–Cox optimum ($\hat{\lambda} = 0.4$). Therefore, we will perform a square root transformation of our response variable Y ($log(Y)=log(\text{kWh})$). Kurtosis is large for all response variable specifications, which means we should use a t-error innovation. 
 
+# NExt task: now...we need to re-create the figures that are created in the attached file:
+1) look for functions that we already included in the attached/pasted code chunks. Tellme which functions in the attached .R file called indepth edashort are already in the pasted code chunks so that I don't copy them over to the RMD file again. Then...
+2) identify which lines from the .R file need to be carried over to the RMD report in order to re-create the figures
+
 # **NOT NEED THIS ANYMORE:**According to Table 1, the log transformation increases residual skewness and kurtosis, suggesting that untransformed $Y_d$ (skewness near 0) is best for our model. 
 
 # **(IDK if we still need this part???)**However, the sustained absence periods are likely why the log transformed response variable is skewed worse, so correcting for that might change what's best for our model.
@@ -305,8 +316,8 @@ The smoothed residuals stay close to zero, so the OLS pre-fits captures the main
 # check where the missing days are
 d <- read.csv(here("data", "daily.csv")); d$date <- as.Date(d$date)
 d$observed <- as.logical(d$observed)
-blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
-               c("2009-08-01","2009-08-08"), c("2010-07-29","2010-08-14"))
+# blocks <- list(c("2007-02-24","2007-03-02"), c("2008-08-06","2008-08-30"),
+#                c("2009-08-01","2009-08-08"), c("2010-07-29","2010-08-14"))
 in_block <- rep(FALSE, nrow(d))
 for (b in blocks) in_block[d$date >= as.Date(b[1]) - 3 & d$date <= as.Date(b[2]) + 3] <- TRUE
 
