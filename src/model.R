@@ -1,7 +1,7 @@
 # Bayesian harmonic regression with AR(p), heavy-tailed errors, and missing days.
 #
 # MODEL
-#   Response on a chosen scale: z_t = g(y_t), with g = log or identity.
+#   Response on a chosen scale: z_t = g(y_t), with g = log, sqrt, or identity.
 #   Defined on a gap-free daily grid t = 1, ..., T, so the error process exists
 #   on every calendar day whether or not y_t was observed.
 #
@@ -34,8 +34,26 @@
 #
 # R translation of src/model.py. Day indices in this file are 1-based.
 
-PRIOR_TAU <- list(log = c(5.0, 2.0), identity = c(100.0, 40.0))
-PRIOR_SIGMA_A <- list(log = 1.0, identity = 20.0)
+PRIOR_TAU <- list(log = c(5.0, 2.0), identity = c(100.0, 40.0), sqrt = c(20.0, 5.0))
+PRIOR_SIGMA_A <- list(log = 1.0, identity = 20.0, sqrt = 2.0)
+
+# ----------------------------------------------------------------------------
+# response scale
+# ----------------------------------------------------------------------------
+
+to_model_scale <- function(y, scale) {
+  switch(scale, log = log(y), sqrt = sqrt(y), identity = y, stop("unknown scale: ", scale))
+}
+
+from_model_scale <- function(z, scale) {
+  # On the sqrt scale the model puts negligible mass below zero; such draws map to 0 kWh.
+  switch(scale, log = exp(z), sqrt = pmax(z, 0)^2, identity = z, stop("unknown scale: ", scale))
+}
+
+log_jacobian <- function(z, scale) {
+  # log |dz/dy|, which turns a density for z into a density for daily kWh.
+  switch(scale, log = -z, sqrt = -log(2) - log(z), identity = 0 * z, stop("unknown scale: ", scale))
+}
 
 # ----------------------------------------------------------------------------
 # design matrix
@@ -152,6 +170,7 @@ fit <- function(
   seed = 1,
   ll_index = NULL,
   n_paths = 400,
+  disperse_init = FALSE,
   verbose = FALSE
 ) {
   # Run one chain. y and observed are on the full daily grid (length T);
@@ -160,6 +179,11 @@ fit <- function(
   # ll_index fixes the days (1-based) at which the pointwise log-likelihood is
   # recorded. Pass the same index set to every model so WAIC compares like with
   # like; if NULL, the model's own maximal usable set is used.
+  #
+  # disperse_init draws random starting values for sigma, phi, nu and the
+  # missing days, so that chains with different seeds start far apart and
+  # split-Rhat can detect a chain that has not converged. beta is not
+  # dispersed because it is drawn first, from its full conditional.
   #
   # Returns a list of posterior draws (rows = saved iterations).
   set.seed(seed)
@@ -172,7 +196,7 @@ fit <- function(
   k <- ncol(X)
 
   z <- rep(NA_real_, nT)
-  if (scale == "log") z[observed] <- log(y[observed]) else z[observed] <- y[observed]
+  z[observed] <- to_model_scale(y[observed], scale)
   z[!observed] <- mean(z[observed])
   miss_idx <- which(!observed)
 
@@ -191,12 +215,22 @@ fit <- function(
   phi <- if (p > 0) rep(0.3 / max(p, 1), p) else numeric(0)
   lam <- rep(1, nT)
   nu <- 8.0
+  if (disperse_init) {
+    sigma2 <- sigma2 * exp(runif(1, -1, 1))
+    if (p > 0) phi <- rep(runif(1, -0.4, 0.9) / p, p)
+    nu <- 2 + exp(runif(1, 0, log(60)))
+    if (length(miss_idx) > 0) {
+      z[miss_idx] <- z[miss_idx] + 2 * sd(z[observed]) * rnorm(length(miss_idx))
+    }
+  }
 
   step_phi <- if (p > 0) rep(0.05, p) else numeric(0)
   step_nu <- 0.3
   acc_phi <- 0
   acc_nu <- 0
   n_prop <- 0L
+  acc_post <- c(phi = 0, nu = 0)
+  n_post <- 0L
 
   n_keep <- length(seq(from = burn, to = n_iter - 1L, by = thin))
   out <- list(
@@ -223,6 +257,10 @@ fit <- function(
   }
   out$loglik <- matrix(0, n_keep, length(ll_idx))
   out$ll_idx <- ll_idx
+  warm_names <- c("sigma", "nu", if (p > 0) paste0("phi_", seq_len(p)), xnames)
+  n_warm <- length(seq(from = 0L, to = burn - 1L, by = thin))
+  out$warmup <- matrix(NA_real_, n_warm, length(warm_names), dimnames = list(NULL, warm_names))
+  wv <- 0L
 
   path_every <- max(1L, n_keep %/% max(as.integer(n_paths), 1L))
   path_slots <- length(seq(from = 0L, to = n_keep - 1L, by = path_every))
@@ -303,6 +341,7 @@ fit <- function(
     }
 
     # ---------------- nu | lambda  (Metropolis on log(nu - 2)) ----------------
+    took_nu <- FALSE
     if (heavy) {
       n_prop <- n_prop + 1L
       lo <- lam[(p + 1L):nT]
@@ -315,10 +354,12 @@ fit <- function(
       if (is.finite(log_r) && log(runif(1)) < log_r) {
         nu <- prop
         acc_nu <- acc_nu + 1
+        took_nu <- TRUE
       }
     }
 
     # ---------------- phi | rest  (Metropolis) ----------------
+    took_phi <- FALSE
     if (p > 0) {
       cur <- log_post_phi(phi)
       prop <- phi + step_phi * rnorm(p)
@@ -327,10 +368,16 @@ fit <- function(
       if (is.finite(log_r) && log(runif(1)) < log_r) {
         phi <- prop
         acc_phi <- acc_phi + 1
+        took_phi <- TRUE
       } else if (is.infinite(log_r) && log_r > 0) {
         phi <- prop
         acc_phi <- acc_phi + 1
+        took_phi <- TRUE
       }
+    }
+    if (it >= burn) {
+      n_post <- n_post + 1L
+      acc_post <- acc_post + c(took_phi, took_nu)
     }
 
     # ---------------- missing z_t | rest ----------------
@@ -409,8 +456,7 @@ fit <- function(
       if (length(miss_idx) > 0) out$z_imputed[sv, ] <- z[miss_idx]
       e <- if (p > 0) ar_resid(eps, phi) else eps
       ee <- if (p > 0) e[ll_idx - p] else e[ll_idx]
-      ll <- log_t(ee, sqrt(sigma2), nu, heavy)
-      if (scale == "log") ll <- ll - z[ll_idx]
+      ll <- log_t(ee, sqrt(sigma2), nu, heavy) + log_jacobian(z[ll_idx], scale)
       out$loglik[sv, ] <- ll
       if ((sv - 1L) %% path_every == 0L && psv < path_slots) {
         psv <- psv + 1L
@@ -421,6 +467,10 @@ fit <- function(
         if (p > 0) out$path_pars[psv, 4:(3L + p)] <- phi
       }
     }
+    if (it < burn && it %% thin == 0L) {
+      wv <- wv + 1L
+      out$warmup[wv, ] <- c(sqrt(sigma2), if (heavy) nu else Inf, phi, beta)
+    }
 
     if (verbose && (it + 1L) %% 5000L == 0L) {
       message(sprintf(
@@ -430,6 +480,10 @@ fit <- function(
     }
   }
 
+  # Metropolis acceptance after burn-in, when the step sizes are frozen.
+  out$acc_rate <- acc_post / max(n_post, 1L)
+  if (p == 0) out$acc_rate["phi"] <- NA_real_
+  if (!heavy) out$acc_rate["nu"] <- NA_real_
   out$miss_idx <- miss_idx
   out$X <- X
   out$scale <- scale
@@ -463,7 +517,7 @@ fit_chains <- function(y, observed, t, dow, n_chains = 4, seed = 1, ...) {
     fit(y, observed, t, dow, seed = seed + 100 * ch, ...)
   })
   merged <- list()
-  for (key in c("beta", "sigma", "phi", "nu", "eps_last", "z_imputed", "loglik")) {
+  for (key in c("beta", "sigma", "phi", "nu", "eps_last", "z_imputed", "loglik", "warmup", "acc_rate")) {
     merged[[key]] <- stack_along_chains(lapply(chains, `[[`, key))
   }
   for (key in c("eps_path", "lam_path", "path_pars")) {
@@ -619,9 +673,17 @@ ess <- function(draws) {
 }
 
 diagnose <- function(draws) {
-  # draws: matrix chain x iteration. Rank-normalised split-Rhat and bulk ESS.
+  # draws: matrix chain x iteration. Rank-normalised split-Rhat and bulk ESS,
+  # plus the folded split-Rhat (sensitive to differences in spread between
+  # chains) and the tail ESS at the 5% and 95% quantiles (Vehtari et al., 2021).
   rn <- rank_normalise(draws)
-  list(rhat = split_rhat(rn), ess = ess(rn))
+  q <- quantile(draws, c(0.05, 0.95))
+  list(
+    rhat = split_rhat(rn),
+    rhat_folded = split_rhat(rank_normalise(abs(draws - median(draws)))),
+    ess = ess(rn),
+    ess_tail = min(ess((draws <= q[1]) * 1), ess((draws >= q[2]) * 1))
+  )
 }
 
 # ----------------------------------------------------------------------------
@@ -740,13 +802,8 @@ forecast <- function(
   }
 
   out <- list(sigma = sigma, nu = nu, scale = merged$scale, loc = loc, heavy = heavy, sel = sel)
-  if (identical(merged$scale, "log")) {
-    out$y <- exp(z)
-    out$mu <- exp(mu)
-  } else {
-    out$y <- z
-    out$mu <- mu
-  }
+  out$y <- from_model_scale(z, merged$scale)
+  out$mu <- from_model_scale(mu, merged$scale)
   out
 }
 
@@ -758,11 +815,10 @@ log_pred_density <- function(fc, y_actual) {
   y_actual <- as.numeric(y_actual)
   H <- ncol(fc$loc)
   out <- rep(NA_real_, H)
-  z_act <- if (identical(fc$scale, "log")) log(y_actual) else y_actual
+  z_act <- to_model_scale(y_actual, fc$scale)
   for (h in seq_len(H)) {
     if (!is.finite(z_act[h])) next
-    ll <- log_t(z_act[h] - fc$loc[, h], fc$sigma, fc$nu, fc$heavy)
-    if (identical(fc$scale, "log")) ll <- ll - z_act[h]
+    ll <- log_t(z_act[h] - fc$loc[, h], fc$sigma, fc$nu, fc$heavy) + log_jacobian(z_act[h], fc$scale)
     m <- max(ll)
     out[h] <- m + log(mean(exp(ll - m)))
   }
@@ -774,7 +830,7 @@ pit <- function(fc, y_actual) {
   # computed from the mixture rather than from sample ranks. Well-calibrated
   # forecasts give a uniform histogram.
   y_actual <- as.numeric(y_actual)
-  z_act <- if (identical(fc$scale, "log")) log(y_actual) else y_actual
+  z_act <- to_model_scale(y_actual, fc$scale)
   H <- ncol(fc$loc)
   out <- rep(NA_real_, H)
   for (h in seq_len(H)) {

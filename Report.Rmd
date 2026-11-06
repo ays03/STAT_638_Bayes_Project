@@ -665,3 +665,77 @@ On the kilowatt-hour scale, the intercept is $N(0, 100^2)$, and the trend, harmo
 The innovation standard deviation has a half-$t$ prior with 3 degrees of freedom and scale 20 kWh (Gelman, 2006): proper, positive, and heavy-tailed. Autoregressive coefficients are uniform on the stationary region, $(-1, 1)$ for an AR(1) and the analogous region for an AR(2), so long-horizon forecasts stay bounded. An exponential prior with mean 10 on $\nu - 2$ keeps $\nu$ above 2, so the variance is finite while heavy and nearly Gaussian tails both stay plausible. The 23 missing days are imputed from the regression and the autoregressive process, with no separate prior.
 
 Together, these choices regularize the parameters without imposing a direction or size on the household's demand patterns in advance.
+
+# 4. Posterior Computation and Diagnostics
+
+```{r post-run, include = FALSE}
+# Posterior for sections 4 and 5. src/06_fit_sqrt.R runs the MCMC (about 12 minutes) and
+# src/07_sqrt_results.R turns the draws into the tables, figures and numbers used below.
+# They run only when results/06_sqrt/summary.rds is missing; delete it to redo the summaries.
+post_dir <- here("results", "06_sqrt")
+fit_files <- file.path(post_dir, paste0(c("main", "J1", "ar2", "kwh", "holdout", "holdout_ar2"), ".rds"))
+if (!file.exists(file.path(post_dir, "summary.rds"))) {
+  if (!all(file.exists(fit_files))) system2("Rscript", shQuote(here("src", "06_fit_sqrt.R")))
+  system2("Rscript", shQuote(here("src", "07_sqrt_results.R")))
+}
+```
+
+The posterior has no closed form, so we sample it with a Gibbs sampler written for this model (`src/model.R`), following Chib (1993) for the autoregressive errors and Geweke (1993) for the $t$ errors. Three augmentations make most full conditionals standard: each $t$ error is a normal error with a latent weight, $\eta_t \mid \lambda_t \sim N(0, \sigma^2/\lambda_t)$ with $\lambda_t \sim \text{Gamma}(\nu/2, \nu/2)$; the half-$t$ prior on $\sigma$ is an inverse-gamma mixture; and the 23 missing days are unknowns. Each iteration draws $\beta$ from a multivariate normal, $\sigma^2$ from an inverse gamma, each $\lambda_t$ from a gamma, and each missing day from a normal. $\phi$ and $\nu$ have no standard full conditional, so they take random-walk Metropolis steps, rejecting non-stationary $\phi$. Step sizes are tuned during burn-in and then frozen; afterwards, 29% of $\phi$ and 30% of $\nu$ proposals are accepted.
+
+We ran four chains of 40,000 iterations from dispersed starting values of $\sigma$, $\phi$, $\nu$, and the missing days, discarded the first 10,000, and kept every fifth draw, leaving 24,000 draws. Table 5 reports the rank-normalized split-$\hat{R}$ and the bulk and tail effective sample sizes (ESS) of Vehtari et al. (2021). The worst $\hat{R}$ is 1.006 and the smallest ESS is 677, against targets of 1.01 and 400, so Monte Carlo error is below 4% of every posterior standard deviation. $\nu$ mixes slowest because the data inform it only through the latent weights. In Figure 6, all four chains leave their starting values within a few hundred iterations and then overlap.
+
+We trust these draws because chains started far apart agree, every diagnostic clears its target, and on data simulated from the model the sampler's 95% intervals covered 14 of 15 true parameter values (`src/02_validate_sampler.R`). The comparison and holdout fits in Section 5 meet the same targets.
+
+```{r table5, echo = FALSE}
+tab5 <- read.csv(file.path(post_dir, "table_convergence.csv"), check.names = FALSE)
+names(tab5)[names(tab5) == "Worst R-hat"] <- "Worst $\\hat{R}$"
+knitr::kable(
+  tab5, escape = FALSE, align = "llcrrr",
+  caption = paste(
+    "Table 5. Sampler steps and convergence diagnostics for the final model (four chains, 24,000 kept draws).",
+    "$\\hat{R}$ is the larger of the bulk and folded rank-normalized split-$\\hat{R}$.",
+    "Targets: $\\hat{R} < 1.01$ and ESS above 400."
+  )
+)
+```
+
+```{r fig6, echo = FALSE, out.width = "100%", fig.cap = "Figure 6. Trace plots for the trend, innovation scale, autoregressive coefficient, and degrees of freedom, including the discarded burn-in (shaded), with each chain's density of kept draws on the right."}
+knitr::include_graphics(here("R_figures", "06_trace.png"))
+```
+
+# 5. Posterior Results and Interpretation
+
+We transform each posterior draw from $\sqrt{\text{kWh}}$ to kWh and summarize the *typical day*, $(x_t^\top\beta)^2$, which is the median daily consumption given the parameters because the error is symmetric on the square-root scale (Table 6).
+
+```{r table6, echo = FALSE}
+tab6 <- read.csv(file.path(post_dir, "table_posterior.csv"), check.names = FALSE)
+knitr::kable(
+  tab6, escape = FALSE, align = "llr",
+  caption = paste(
+    "Table 6. Posterior means and 95% credible intervals (CrI). kWh quantities refer to the typical day",
+    "at the record midpoint, averaged over the week or the year as appropriate."
+  )
+)
+```
+
+**Variation and trend (Q1, Q2).** A typical day uses 25.8 kWh [95% CrI 25.2, 26.4]; variation around that level is seasonal, weekly, and day-to-day, not a drift. The annual mean changes by −0.20 kWh per year [−0.77, 0.37], or −0.8% [−3.0, 1.4]. A decline has posterior probability 0.76, but the interval includes zero, so there is no clear long-term increase or decrease.
+
+**Annual cycle (Q3).** Typical use peaks at 35.1 kWh [33.4, 36.8] in mid-December and falls to 15.9 kWh [14.8, 17.0] in early August, a swing of 19.2 kWh (Figure 7a). The second harmonic is an important improvement: it moves the curve by up to 3.2 kWh [2.2, 4.3], flattening late winter and deepening the summer trough, and raises WAIC's expected log predictive density by 15.6 (SE 6.1).
+
+**Weekly pattern (Q4).** Weekends use 4.4 kWh [3.5, 5.3] more than weekdays in every posterior draw. Weekdays also differ: Thursday is lowest, 2.7 kWh [1.9, 3.5] below the weekly mean (Figure 7b).
+
+```{r fig7, echo = FALSE, out.width = "100%", fig.cap = "Figure 7. (a) Posterior typical-day consumption over the year with 95% credible bands, for the final two-harmonic model and the one-harmonic model; dots are observed monthly medians. (b) Day-of-week effects relative to the weekly mean, with 95% credible intervals."}
+knitr::include_graphics(here("R_figures", "07_season_week.png"))
+```
+
+**Forecasting (Q5).** We refit through November 2009 and forecast the final year (Figure 8). The mean 95% interval is 27.5 kWh wide one day ahead and 30–31 kWh from day three onward, matching the limit $1/\sqrt{1-\phi^2} = 1.13$ implied by $\phi = 0.47$ [0.42, 0.52]. After a few days, recent consumption stops being informative and forecasts reduce to the seasonal and weekly pattern. The intervals are calibrated (97.6% and 53% coverage at the 95% and 50% levels) but wide: the 12-month forecast misses by 5.2 kWh per day on average, a fifth of typical use.
+
+```{r fig8, echo = FALSE, out.width = "100%", fig.cap = "Figure 8. Forecasting the held-out final year from a fit through 30 November 2009. (a) Twelve-month predictive median with 50% and 95% intervals against actual consumption; (b) mean 95% interval width and (c) empirical coverage by horizon, over 113 rolling forecast origins."}
+knitr::include_graphics(here("R_figures", "08_forecast.png"))
+```
+
+**Unexplained periods (Q6).** Single days are flagged about as often as chance predicts: 30 of 1,408 one-step-ahead predictive p-values fall below 0.01 or above 0.99, against 28 expected. The $t$ errors ($\nu = 8.4$ [5.8, 12.4]) give 20 isolated extreme days less than half weight, but not the absence blocks, whose low level the AR(1) term carries forward. Sustained periods are not explained: comparing each 14-day mean with its posterior predictive distribution flags 10 episodes (Figure 9). Eight are low, including all three August absences, when use fell to 56–67% of a typical day; two are high, both in the first winter. Calendar terms cannot anticipate these behavioral episodes.
+
+```{r fig9, echo = FALSE, out.width = "100%", fig.cap = "Figure 9. Observed consumption against the model's typical day. Shading marks 14-day periods whose mean falls outside the central 98% of its posterior predictive distribution; circles mark days the t likelihood gives less than half weight."}
+knitr::include_graphics(here("R_figures", "09_anomalies.png"))
+```

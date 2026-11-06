@@ -64,6 +64,20 @@ data/
 # The text summaries derived from them are tracked, in results/.
 results/03_fits/
 
+# Posterior draws from src/06_fit_sqrt.R, about 50 MB. Regenerate with
+#     Rscript src/06_fit_sqrt.R      (about 12 minutes)
+# The summaries that Report.Rmd reads (summary.rds and the CSV tables) are tracked.
+results/06_sqrt/*.rds
+!results/06_sqrt/summary.rds
+results/06_sqrt/log_*.txt
+
+# Posterior draws from src/06_fit_sqrt.R, about 50 MB. Regenerate with
+#     Rscript src/06_fit_sqrt.R      (about 12 minutes)
+# The summaries that Report.Rmd reads (summary.rds and the CSV tables) are tracked.
+results/06_sqrt/*.rds
+!results/06_sqrt/summary.rds
+results/06_sqrt/log_*.txt
+
 # Matplotlib config cache created by the analysis scripts
 .mplcache/
 
