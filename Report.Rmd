@@ -656,6 +656,8 @@ knitr::kable(
 knitr::include_graphics(here("R_figures", "03_priors.png"))
 ```
 
+**New Suggestion (Aysegul):** This dataset was previously used to benchmark machine-learning forecasters at minute or hourly resolution (e.g., Kim & Cho, 2019), including Bayesian neural networks for uncertainty estimation (Zaman et al., 2022). We instead fit an interpretable Bayesian regression to daily totals, with explicit seasonal, weekly, autoregressive and heavy-tailed components. There is no published consumption information for comparable settings, so we utilized weakly informative priors. With our large sample size (over 1,000 training days), posterior estimates are insensitive to this choice, but Bayes factors and the tail parameter are not. Therefore, so we report a prior sensitivity check for both.
+
 For our project, we utilized priors that are weakly informative to allow our data to be the primary thing informing our posterior distributions, and our choice of prior distributions and values of the parameters within them are directly downstream from that. 
 
 First, for our intercept ${\beta_0}$, we chose a normal prior distribution because it is continuous, allows the intercept to take positive or negative values, and is symmetric. Our standard deviation is 100 as to not constrain the intercept given the data. Our mean is 0 not because we believe the baseline level is zero, but because with that standard deviation it is nonrestrictive.
@@ -752,3 +754,8 @@ knitr::include_graphics(here("R_figures", "08_forecast.png"))
 ```{r fig9, echo = FALSE, out.width = "100%", fig.cap = "Figure 9. Observed consumption against the model's typical day. Shading marks 14-day periods whose mean falls outside the central 98% of its posterior predictive distribution; circles mark days the t likelihood gives less than half weight."}
 knitr::include_graphics(here("R_figures", "09_anomalies.png"))
 ```
+
+# REFERENCES:
+Zaman, M., Saha, S., Zohrabi, N., & Abdelwahed, S. (2022). Uncertainty estimation in power consumption of a smart home using Bayesian LSTM networks. 2022 IEEE 7th International Symposium on Advanced Control of Industrial Processes (AdCONIP), 120–125.
+
+Kim, T.-Y., & Cho, S.-B. (2019). Predicting residential energy consumption using CNN-LSTM neural networks. Energy, 182, 72–81. https://doi.org/10.1016/j.energy.2019.05.230
