@@ -656,6 +656,19 @@ knitr::kable(
 knitr::include_graphics(here("R_figures", "03_priors.png"))
 ```
 
+For our project, we utilized priors that are weakly informative to allow our data to be the primary thing informing our posterior distributions, and our choice of prior distributions and values of the parameters within them are directly downstream from that. 
+
+First, for our intercept ${\beta_0}$, we chose a normal prior distribution because it is continuous, allows the intercept to take positive or negative values, and is symmetric. Our standard deviation is 100 as to not constrain the intercept given the data. Our mean is 0 not because we believe the baseline level is zero, but because with that standard deviation it is nonrestrictive.
+
+Second, for our other regression coefficients ${\beta_1},{a_j},{b_j},{\delta_k}$, we also chose a normal prior distribution for similar reasons-- it is continuous, allows the coefficients to take positive or negative values (we're letting the data choose how the variables affect daily electricity consumption), is symmetric, and extremely large coefficients become less plausible. Our standard deviation, at 40, is also large as to not constrain these coefficients given the data, and we can see that because the prior standard deviation is large compared to typical coefficient magnitudes.
+
+Third, for our innovation scale $\sigma$, we choose a half-t distribution. Not only is it recommended by the literature (Gelman, 2006), but it's useful due to restricting the values to positive numbers and having heavy tails that allow us to accommodate relatively high standard deviations. The parameter degrees of freedom = 3 gives the distribution its heavy tails, and the parameter scale = 20 gives the distribution its large spread to allow for a broad distribution.
+
+Fourth,
+
+Fifth, for our degrees of freedom $\nu$, we choose an exponential distribution for $\nu-2$, for similar reasons of why we chose the half-t distribution. We want to restrict the values to values greater than 2 (the t distribution only has finite variance when the degrees of freedom are greater than 2), and we're trying to accommodate heavy-tailed innovations [(the exponential distribution allows us to do this while also assigning less probability to extremely large values. The degrees of freedom determine how heavy the innovation distribution's tails are: smaller values produce heavier tails, while larger values produce increasingly Gaussian-like distributions. The Exponential prior allows us to accommodate heavy-tailed innovations by assigning substantial prior density to values of $\nu$ near 2, while progressively reducing the density assigned to extremely large values of $\nu$.
+
+
 In (a) the 22 kWh seasonal gap is small beside priors of width 40 and 100; (b)–(d) are scale, stationarity, and degrees of freedom.
 
 The priors are weakly informative and are coded explicitly in the Gibbs sampler. Retained days average 26.2 kWh, with standard deviation 10.0 kWh and a range of about 4 to 80 kWh. Table 2 summarizes the priors for the final kilowatt-hour model.
