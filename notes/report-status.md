@@ -1,8 +1,8 @@
 # Report status (as of Nov 9)
 
-Reviewed `Report.Rmd` at commit `1717f0d` (Aysegul's Nov 7 Section 3 update) against the rubric in `Bayes Project Instructions.docx`.
+Reviewed `Report.Rmd` at commit `1717f0d` (Aysegul's Nov 7 Section 3 update) against the rubric in `Bayes Project Instructions.docx`. Updated the same day after Section 7 was added.
 
-**Short version.** Sections 1–5 are drafted, and Sections 4 and 5 are essentially finished. Sections 6, 7, 8 and the AI Use Statement have not been started. The report currently does **not** knit, and the draft is already about 3,340 words against the 2,500-word cap before the three missing sections are added.
+**Short version.** Sections 1–5 are drafted, and Sections 4 and 5 are essentially finished. Section 7 is done. Sections 6, 8 and the AI Use Statement have not been started. The report currently does **not** knit, and the draft is already about 3,790 words against the 2,500-word cap before the two missing sections are added.
 
 ---
 
@@ -16,14 +16,14 @@ Reviewed `Report.Rmd` at commit `1717f0d` (Aysegul's Nov 7 Section 3 update) aga
 | 4. Posterior computation and diagnostics | Done (one caveat) | 293 / 250–300 |
 | 5. Posterior results and interpretation | Done; answers Q1–Q6 | 397 / 350–400 |
 | 6. Sensitivity analysis and model checking | Not started | 0 / 250–300 |
-| 7. Alternative analysis and comparison | Not started | 0 / 400–450 |
+| 7. Alternative analysis and comparison | Done (Table 7, Figure 10) | 448 / 400–450 |
 | 8. Innovation or extension, plus "why Bayesian" | Not started | 0 / 200–250 |
 | AI Use Statement | Missing | 0 / max 50 |
 | References | Placeholder | (not counted) |
 
 Word counts are prose only (code chunks and captions excluded, inline math counted as one word), so treat them as approximate.
 
-**Word budget.** Sections 1–5 are allowed at most 1,550 words and are at about 3,340. Sections 6–8 need another 850–1,000. Roughly 1,800 words have to come out of Sections 1–3.
+**Word budget.** Sections 1–5 are allowed at most 1,550 words and are at about 3,340. Section 7 is at 448. Sections 6 and 8 need another 450–550. Roughly 1,800 words still have to come out of Sections 1–3.
 
 ---
 
@@ -32,7 +32,7 @@ Word counts are prose only (code chunks and captions excluded, inline math count
 ### Section 1 (Scientific question and data)
 
 - Most of the length is the data cleaning and transformation write-up (1.3.2 and 1.3.3). Supplementary material does not count toward the limit, so moving those to an appendix is the easiest cut.
-- 1.2 "Why Is This a Bayesian Problem" is really the answer to the "Why is the Bayesian approach justified?" question that the rubric puts at the end of Section 8. It can move there.
+- 1.2 "Why Is This a Bayesian Problem" overlaps with the "Why Bayesian?" paragraph that now ends Section 7, so it can be cut.
 
 ### Section 2 (EDA and Bayesian model)
 
@@ -106,10 +106,14 @@ The `Report.html` lying around locally is from Oct 31, so it is stale.
   - the prior sensitivity run that Section 3 now promises;
   - the seasonal coverage check of the predictive intervals that Section 2.2 says will be "in Section 6".
 
-### Section 7 (Alternative analysis)
+### Section 7 (Alternative analysis): done
 
-- `frequentist_approach.tex` (outside this repo, in the project folder) has a full maximum-likelihood counterpart answering all six questions, with a side-by-side Bayesian vs frequentist section.
-- It is on the **kWh** scale, so it needs refitting on √kWh to compare against the final model.
+- `src/08_frequentist.R` fits the final √kWh model (trend, two harmonics, day of week, AR(1) with t errors) by maximum likelihood with no priors, in about 5 seconds. It writes `results/08_freq/` (Table 7 and `summary.rds`) and `R_figures/10_freq_vs_bayes.png` (Figure 10).
+- Missing days: the likelihood conditions on the first day of each observed run, so the 23 missing days drop out (1,408 terms) instead of being imputed.
+- kWh-scale confidence intervals come from simulating the estimator's asymptotic normal distribution (Krinsky and Robb, 1986). Forecasts are scored on the same 113 rolling origins as Section 5.
+- Result: every typical-day estimate agrees with the posterior mean within 0.4 kWh, and interval widths are within 2%. The trend p-value is 0.55, against P(decline) = 0.76. The second harmonic is kept by both (LRT p < 0.001). Plug-in forecast intervals are about 2% narrower, with 97.2% versus 97.6% coverage.
+- The section ends with the "Why is the Bayesian approach justified?" answer.
+- **Rerun note:** the Bayesian column of Table 7 is read from `results/06_sqrt/summary.rds`. If the Bayesian fit is rerun (for example after the σ-prior fix), delete `results/08_freq/summary.rds` and knit again, or run `Rscript src/08_frequentist.R`.
 
 ### Section 8 (Innovation or extension)
 
@@ -119,7 +123,7 @@ The model already contains three items from the rubric's list of acceptable exte
 - Bayesian imputation of the 23 missing days (data augmentation in the Gibbs sampler);
 - the 14-day posterior predictive anomaly check (Figure 9) as a problem-specific predictive quantity.
 
-Then answer "Why is the Bayesian approach justified?" explicitly, reusing 1.2.
+Section 7 already answers "Why is the Bayesian approach justified?", so Section 8 can point to it rather than repeat it, and 1.2 can be cut.
 
 ### AI Use Statement
 
