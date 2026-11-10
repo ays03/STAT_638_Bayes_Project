@@ -945,6 +945,41 @@ knitr::include_graphics(here("R_figures", "08_forecast.png"))
 knitr::include_graphics(here("R_figures", "09_anomalies.png"))
 ```
 
+# 7. Alternative Analysis, Comparison, and Bayesian Justification
+
+```{r freq-run, include = FALSE}
+# Section 7. src/08_frequentist.R fits the final model by maximum likelihood (about 5 seconds)
+# and writes Table 7 and Figure 10. It runs only when results/08_freq/summary.rds is missing.
+freq_dir <- here("results", "08_freq")
+if (!file.exists(file.path(freq_dir, "summary.rds"))) system2("Rscript", shQuote(here("src", "08_frequentist.R")))
+```
+
+**Frequentist analysis.** We refit the final model (the same $\sqrt{\text{kWh}}$ mean structure and AR(1) $t$ errors) by maximum likelihood, with no priors. The likelihood conditions on the first day of each observed run, so the 23 missing days drop out rather than being imputed, leaving 1,408 terms. Standard errors come from the observed information. Typical-day kWh quantities are nonlinear in $\beta$, so their confidence intervals come from simulating the estimator's asymptotic normal distribution (Krinsky and Robb, 1986). Forecasts plug the training-period estimates into the AR(1) recursion and are scored on the same 113 rolling origins as Section 5.
+
+**Estimates and uncertainty.** Every typical-day estimate agrees with its posterior mean to within 0.4 kWh, and their interval widths differ by under 2% (Table 7, Figure 10a). With 1,408 likelihood terms, the weakly informative priors carry almost no weight. The largest difference is the tail weight, $\hat\nu = 7.7$ against a posterior mean of 8.4, because the posterior of $\nu$ is right-skewed and its prior mean is 12.
+
+**Interpretation.** The conclusions match; only the wording differs. For the trend, the frequentist analysis cannot reject zero ($p = 0.55$), while the Bayesian analysis gives a decline probability 0.76. That is close to one minus the one-sided $p$-value (0.72), as expected under weak priors, but only the Bayesian number is a probability about this household's trend. Both keep the second harmonic: the likelihood-ratio test gives $\chi^2_2 = 34.3$ ($p < 0.001$), and AIC improves by 30.3, close to the WAIC gain of 15.6 expressed on the same deviance scale (31.2).
+
+**Predictions.** Plug-in intervals treat the estimates as known, so they are 1.6% narrower one day ahead and 2.5% narrower from day three onward (Figure 10b). Their 95% coverage is 97.2%, against 97.6% (Figure 10c), and both 12-month forecasts miss by 5.2 kWh per day on average. Drawing the parameters from the estimator's sampling distribution closes most of the width gap, so parameter uncertainty is a small part of forecast uncertainty here.
+
+**Why Bayesian?** For this household, the Bayesian analysis adds little to the estimates or forecasts: four years of daily data give both methods the same answers to all six questions. Its advantages are interpretation and bookkeeping. Every kWh summary, including peak dates and the 14-day anomaly check, comes from transforming posterior draws, with no delta method or asymptotic approximation. Parameter uncertainty, the 23 missing days and the latent $t$ weights all reach the forecasts without extra steps. A question like "how likely is a decline?" gets a direct answer. The cost is 12 minutes of MCMC and convergence checking, against 5 seconds of optimization. With less data, such as a newly metered household, the priors and full predictive distribution would matter more.
+
+```{r table7, echo = FALSE}
+tab7 <- read.csv(file.path(freq_dir, "table_freq_vs_bayes.csv"), check.names = FALSE)
+knitr::kable(
+  tab7, escape = FALSE, align = "lll",
+  caption = paste(
+    "Table 7. The final model fitted both ways. kWh quantities refer to the typical day, as in Table 6;",
+    "frequentist intervals for them simulate the asymptotic normal distribution of the MLE.",
+    "Forecast rows use fits through 30 November 2009."
+  )
+)
+```
+
+```{r fig10, echo = FALSE, out.width = "100%", fig.cap = "Figure 10. The final model fitted by Bayesian and frequentist methods. (a) Typical-day quantities with 95% credible and confidence intervals; (b) mean width of the 95% predictive interval by horizon over 113 rolling origins, including a plug-in forecast that also draws the parameters from the estimator's asymptotic distribution; (c) empirical coverage of the 95% (filled) and 50% (open) intervals by horizon band."}
+knitr::include_graphics(here("R_figures", "10_freq_vs_bayes.png"))
+```
+
 # REFERENCES:
 
 Zaman, M., Saha, S., Zohrabi, N., & Abdelwahed, S. (2022). Uncertainty estimation in power consumption of a smart home using Bayesian LSTM networks. 2022 IEEE 7th International Symposium on Advanced Control of Industrial Processes (AdCONIP), 120–125.
@@ -954,3 +989,6 @@ Kim, T.-Y., & Cho, S.-B. (2019). Predicting residential energy consumption using
 GridLabs. (n.d.). Offres électricité à Sceaux : prix kWh & verte 2026. Retrieved November 9, 2026, from https://www.gridlabs.fr/electricite/sceaux-92071  
 
 EDF. Le Tarif Bleu en bref. https://www.edf.fr/collectivites/offres-electricite/tarifs-reglementes/tarif-bleu (accessed November 2026).
+
+Krinsky, I., & Robb, A. L. (1986). On approximating the statistical properties of elasticities. The Review of Economics and Statistics, 68(4), 715–719.
+
