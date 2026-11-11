@@ -742,38 +742,40 @@ We will use Bayesian data augmentation using Gibbs sampling to handle the missin
 
 # 3. Prior Distributions
 
-```{r table5, echo = FALSE}
+```{r tab-priors, echo = FALSE}
 tab5 <- data.frame(
-  Parameter = c(
-    "Intercept",
-    "Trend, harmonics, day of week",
-    "Innovation scale",
-    "Autoregressive coefficient",
-    "Degrees of freedom",
-    "Missing days"
-  ),
-  `sqrt(kWh) prior` = c(
-    "$N(0, 20^2)$",
-    "$N(0, 5^2)$",
-    "half-$t$, 3 df, scale 2",
-    "Uniform on the stationary region",
-    "$\\nu - 2 \\sim$ Exponential(mean 10)",
-    "Implied by the model"
-  ),
-  Role = c(
-    "Level at the midpoint of the record",
-    "Contrasts around that level",
-    "Size of a one-day shock",
-    "Day-to-day memory; forecasts stay bounded",
-    "Tail weight, with the variance finite",
-    "Impute missing days"
-  ),
+  Parameter = c("Intercept",
+                "Trend, harmonics, day of week",
+                "Innovation scale",
+                "Autoregressive coefficient(s)",
+                "Degrees of freedom",
+                "Latent weights",
+                "Missing days"),
+  Symbol = c("$\\beta_0$",
+             "$\\beta_1,\\ a_j,\\ b_j,\\ \\delta_k$",
+             "$\\sigma$",
+             "$\\phi_1, \\dots, \\phi_p$",
+             "$\\nu$",
+             "$\\lambda_t$",
+             "$z_t$ (missing $t$)"),
+  `sqrt(kWh) prior` = c("$N(0, 20^2)$",
+                        "$N(0, 5^2)$ each",
+                        "half-$t$, 3 df, scale 2",
+                        "Uniform on the stationary region",
+                        "$\\nu - 2 \\sim$ Exponential(mean 10)",
+                        "$\\text{Gamma}(\\nu/2, \\nu/2)$ (hierarchical)",
+                        "Implied by the model"),
+  Role = c("Level at the midpoint of the record",
+           "Contrasts around that level",
+           "Size of a one-day shock",
+           "Day-to-day memory; forecasts stay bounded",
+           "Tail weight, with the variance finite",
+           "Downweight extreme days",
+           "The 23 gaps are imputed"),
   check.names = FALSE
 )
-knitr::kable(
-  tab5, escape = FALSE,
-  caption = "Table 5. Priors for the sqrt(kWh) model."
-)
+knitr::kable(tab5, escape = FALSE,
+             caption = "Table 5. Priors for the square-root-scale model.")
 ```
 
 ```{r fig-priors, fig.width = 11, fig.height = 8.2, fig.cap = "Figure 5. Prior densities on the square-root scale: (a) regression coefficients, with the largest gap between monthly mean square-root consumption for reference; (b) innovation scale, with the standard deviation of daily square-root consumption; (c) AR(1) coefficient, uniform on the stationary region; (d) degrees of freedom."}
@@ -852,7 +854,7 @@ text(3.1, 0.085, expression(nu == 2), col = col_red, cex = 0.75, adj = 0)
 text(13.2, 0.07, "prior mean of nu = 12", col = col_gold, cex = 0.75, adj = 0)
 text(32, 0.04, "nearly\nGaussian", col = col_nav, cex = 0.75)
 ```
-This dataset was previously been used mainly to benchmark machine-learning forecasters at minute or hourly resolution (e.g., Kim & Cho, 2019), including Bayesian neural networks for uncertainty estimation (Zaman et al., 2022). We instead fit an interpretable Bayesian regression to daily totals, with seasonal, weekly, autoregressive and heavy-tailed components. There is no published consumption information for comparable settings, so we utilized weakly informative priors to allow our data to be the primary thing informing our posterior distributions (Table 5, Figure 5). 
+This dataset was previously been used mainly to benchmark machine-learning forecasters at minute or hourly resolution (e.g., Kim & Cho, 2019), including Bayesian neural networks for uncertainty estimation (Zaman et al., 2022). We instead fit an interpretable Bayesian regression to daily totals, with seasonal, weekly, autoregressive and heavy-tailed components. There are no published estimates of these model parameters for a comparable household, so we utilized weakly informative priors to allow our data to be the primary thing informing our posterior distributions (Table 5, Figure 5). 
 
 The priors are centered at zero and are not derived from the data; we compare them with summaries of the data only to confirm that they are wide relative to plausible values. With our large sample size (over 1,000 training days), we expect posterior estimates to be insensitive to this choice, but Bayes factors and the tail parameter $\nu$ won't be. Therefore, we will conduct a prior sensitivity check with the coefficient prior standard deviations halved and doubled for both.
 
@@ -865,6 +867,8 @@ Third, the innovation scale $\sigma$ has a half-$t$ prior with 3 degrees of free
 Fourth, the autoregressive coefficients have a uniform prior on the stationary region: $(-1, 1)$ for AR(1), and the corresponding stationary region for the higher-order models compared in Section 5. Within that region every value is equally likely, and shocks fade over time, so long-horizon forecasts stay bounded (Figure 5c).
 
 Fifth, for our degrees of freedom $\nu$, we choose an exponential prior with mean 10 for $\nu-2$, for similar reasons of why we chose the half-t distribution. We want to restrict the values to values greater than 2 (the t distribution only has finite variance when the degrees of freedom are greater than 2), and we're trying to accommodate heavy-tailed innovations [(the exponential distribution allows us to do this while also assigning less probability to extremely large values. The degrees of freedom determine how heavy the innovation distribution's tails are: smaller values produce heavier tails, while larger values produce increasingly Gaussian-like distributions. The Exponential prior allows us to accommodate heavy-tailed innovations by assigning substantial prior density to values of $\nu$ near 2, while progressively reducing the density assigned to extremely large values of $\nu$. **Shorter alternative of this paragraph:** Fifth, an exponential prior with mean 10 on $\nu - 2$ keeps $\nu$ above 2, so the innovation variance is finite. It puts substantial weight on small values (heavy tails) and less on very large ones (nearly Gaussian tails), so the data decide how heavy the tails are (Figure 5d).
+
+#! prior for latent weights ???
 
 The 23 missing days need no separate prior: their distribution is implied by the regression and the autoregressive process, and they are sampled within the Gibbs sampler.
 
