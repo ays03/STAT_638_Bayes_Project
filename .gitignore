@@ -78,6 +78,12 @@ results/06_sqrt/*.rds
 !results/06_sqrt/summary.rds
 results/06_sqrt/log_*.txt
 
+# Prior-sensitivity fits from src/09_sensitivity.R, about 4 x 5 MB. Regenerate with
+#     Rscript src/09_sensitivity.R   (about 9 minutes)
+# summary.rds and the CSV tables that Report.Rmd reads are tracked.
+results/09_sensitivity/*.rds
+!results/09_sensitivity/summary.rds
+
 # Matplotlib config cache created by the analysis scripts
 .mplcache/
 

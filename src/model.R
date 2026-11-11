@@ -171,7 +171,10 @@ fit <- function(
   ll_index = NULL,
   n_paths = 400,
   disperse_init = FALSE,
-  verbose = FALSE
+  verbose = FALSE,
+  prior_tau = PRIOR_TAU[[scale]],
+  prior_sigma_A = PRIOR_SIGMA_A[[scale]],
+  nu_exp_mean = 10.0
 ) {
   # Run one chain. y and observed are on the full daily grid (length T);
   # y may contain NA wherever observed is FALSE.
@@ -184,6 +187,10 @@ fit <- function(
   # missing days, so that chains with different seeds start far apart and
   # split-Rhat can detect a chain that has not converged. beta is not
   # dispersed because it is drawn first, from its full conditional.
+  #
+  # prior_tau = c(intercept SD, SD of every other coefficient), prior_sigma_A
+  # (half-t scale of sigma) and nu_exp_mean (prior mean of nu - 2) default to
+  # the priors in Report section 3; override them for sensitivity analyses.
   #
   # Returns a list of posterior draws (rows = saved iterations).
   set.seed(seed)
@@ -200,12 +207,11 @@ fit <- function(
   z[!observed] <- mean(z[observed])
   miss_idx <- which(!observed)
 
-  tau_int <- PRIOR_TAU[[scale]][1]
-  tau_oth <- PRIOR_TAU[[scale]][2]
+  tau_int <- prior_tau[1]
+  tau_oth <- prior_tau[2]
   prior_prec <- diag(c(1 / tau_int^2, rep(1 / tau_oth^2, k - 1)))
-  sigma_A <- PRIOR_SIGMA_A[[scale]]
+  sigma_A <- prior_sigma_A
   nu_sigma <- 3.0
-  nu_exp_mean <- 10.0
 
   beta <- qr.solve(X[observed, , drop = FALSE], z[observed])
   eps <- as.numeric(z - X %*% beta)

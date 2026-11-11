@@ -856,7 +856,7 @@ text(32, 0.04, "nearly\nGaussian", col = col_nav, cex = 0.75)
 ```
 This dataset was previously been used mainly to benchmark machine-learning forecasters at minute or hourly resolution (e.g., Kim & Cho, 2019), including Bayesian neural networks for uncertainty estimation (Zaman et al., 2022). We instead fit an interpretable Bayesian regression to daily totals, with seasonal, weekly, autoregressive and heavy-tailed components. There are no published estimates of these model parameters for a comparable household, so we utilized weakly informative priors to allow our data to be the primary thing informing our posterior distributions (Table 5, Figure 5). 
 
-The priors are centered at zero and are not derived from the data; we compare them with summaries of the data only to confirm that they are wide relative to plausible values. With our large sample size (over 1,000 training days), we expect posterior estimates to be insensitive to this choice, but Bayes factors and the tail parameter $\nu$ won't be. Therefore, we will conduct a prior sensitivity check with the coefficient prior standard deviations halved and doubled for both.
+The priors are centered at zero and are not derived from the data; we compare them with summaries of the data only to confirm that they are wide relative to plausible values. With our large sample size (over 1,000 training days), we expect posterior estimates to be insensitive to this choice, but the tail parameter $\nu$, which the data inform least, may not be. Therefore, Section 6 refits the model with the coefficient prior standard deviations halved and doubled, and with the prior on $\nu$ shifted toward heavier and toward lighter tails.
 
 First, the intercept $\beta_0$ has a normal prior, which is continuous, symmetric, and allows any real value. Its standard deviation of 20 $\sqrt{\text{kWh}}$ places 95% of the prior within ±40 $\sqrt{\text{kWh}}$ (up to 40² = 1,600 kWh/day), far above the current average for a Sceaux household (about 9.6 kWh per day; GridLabs, n.d.), this household’s highest observed day (about 80 kWh), and even the physical maximum of a residential connection (864 kWh/day; EDF, Tarif Bleu), so the prior does not constrain the intercept. Our mean is 0 not because we believe the baseline level is zero, but because with that standard deviation, it is nonrestrictive (Figure 5a).  
 
@@ -947,6 +947,65 @@ knitr::include_graphics(here("R_figures", "08_forecast.png"))
 
 ```{r fig9, echo = FALSE, out.width = "100%", fig.cap = "Figure 9. Observed consumption against the model's typical day. Shading marks 14-day periods whose mean falls outside the central 98% of its posterior predictive distribution; circles mark days the t likelihood gives less than half weight."}
 knitr::include_graphics(here("R_figures", "09_anomalies.png"))
+```
+
+# 6. Sensitivity Analysis and Model Checking
+
+```{r sens-run, include = FALSE}
+# Section 6. src/09_sensitivity.R refits the final model under four alternative priors
+# (about 10 minutes) and runs the predictive checks. It runs only when
+# results/09_sensitivity/summary.rds is missing; delete it to redo the summaries.
+sens_dir <- here("results", "09_sensitivity")
+if (!file.exists(file.path(sens_dir, "summary.rds"))) system2("Rscript", shQuote(here("src", "09_sensitivity.R")))
+```
+
+**Prior sensitivity.** We refit the final model four times, changing one prior at a time: the coefficient prior standard deviations halved (intercept 10, others 2.5 $\sqrt{\text{kWh}}$) or doubled (40 and 10), and the prior mean of $\nu - 2$ lowered from 10 to 3 (heavier tails) or raised to 30 (nearly Gaussian tails). No conclusion changes (Table 8). Every kWh summary moves by at most 0.02 posterior standard deviations, $P(\text{decline})$ stays at 0.75–0.76, and WAIC's elpd changes by at most 0.2. Even $\nu$ stays between 7.8 and 8.6 while its prior mean ranges from 5 to 32, so the evidence for heavy tails comes from the data.
+
+**Modelling assumptions.** On the same 1,399 likelihood terms, dropping the second harmonic lowers WAIC's elpd by 15.6 (SE 6.1), and modelling raw kWh lowers it by 53.1 (SE 8.6). AR(2) errors raise it by 15.5 (SE 7.4) but forecast the held-out year slightly worse (log score −0.004 per forecast, SE 0.002), so we keep AR(1).
+
+**Posterior predictive checks.** Across 2,000 series simulated from the posterior, the model reproduces day-to-day persistence, skewness, the highest day and the number of low days (Table 9, Figure 11). The winter-to-summer spread ratio is borderline ($p = 0.065$): the square-root scale removes most, not all, of the extra winter variability. The observed longest run below 12 kWh, 25 days, is never replicated (95% interval 3–9 days), so the model cannot generate the absence blocks found under Q6.
+
+**Calibration by season.** Held-out 95% intervals cover 97.3–97.9% of days in every season, widening from 25.5 kWh in summer to 34.9 kWh in winter, so the winter variability noted in Section 2.2 does not miscalibrate them (Table 10). The 50% intervals are less even (44–64%).
+
+The answers to Q1–Q5 are robust to the priors and to these modelling choices; the only failure is the sustained absences already reported under Q6.
+
+```{r table8, echo = FALSE}
+tab8 <- read.csv(file.path(sens_dir, "table_prior.csv"), check.names = FALSE)
+knitr::kable(
+  tab8, escape = FALSE, align = "lccccc",
+  caption = paste(
+    "Table 8. Section 5 conclusions under the reported priors and four alternatives, changing one prior at a time.",
+    "Posterior means and 95% credible intervals; kWh quantities refer to the typical day, as in Table 6.",
+    "The change in WAIC elpd is relative to the reported fit, on the same 1,399 likelihood terms.",
+    "Every fit meets the convergence targets of Section 4."
+  )
+)
+```
+
+```{r table9, echo = FALSE}
+tab9 <- read.csv(file.path(sens_dir, "table_ppc.csv"), check.names = FALSE)
+knitr::kable(
+  tab9, escape = FALSE, align = "lccc",
+  caption = paste(
+    "Table 9. Posterior predictive checks: each statistic on the observed series and on 2,000 series",
+    "simulated from the posterior, with missing days removed from both. Probabilities near 0 or 1 indicate misfit."
+  )
+)
+```
+
+```{r fig11, echo = FALSE, out.width = "100%", fig.cap = "Figure 11. Posterior predictive checks. Histograms show each statistic over 2,000 series simulated from the posterior; red lines mark the observed series."}
+knitr::include_graphics(here("R_figures", "11_ppc.png"))
+```
+
+```{r table10, echo = FALSE}
+tab10 <- read.csv(file.path(sens_dir, "table_season.csv"), check.names = FALSE)
+knitr::kable(
+  tab10, align = "lccccc",
+  caption = paste(
+    "Table 10. Held-out predictive intervals by season, over the 113 rolling origins and 1-60 day horizons of Section 5",
+    "(fit through 30 November 2009). 'Absence days removed' drops the 17 days of the August 2010 absence block."
+  )
+)
 ```
 
 # 7. Alternative Analysis, Comparison, and Bayesian Justification
