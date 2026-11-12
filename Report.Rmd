@@ -742,67 +742,77 @@ tab4_kbl
 ## Section 3 code:
 
 ```{r section3-code, echo = TRUE, results = "hide"}
-# ---- Table 5 (priors) ----
-tab5 <- data.frame(
-  Parameter = c("Intercept",
-                "Trend, harmonics, day of week",
-                "Innovation scale",
-                "Autoregressive coefficient(s)",
-                "Degrees of freedom",
-                "Latent weights",
-                "Missing days"),
-  Symbol = c("$\\beta_0$",
-             "$\\beta_1,\\ a_j,\\ b_j,\\ \\delta_k$",
-             "$\\sigma$",
-             "$\\phi_1, \\dots, \\phi_p$",
-             "$\\nu$",
-             "$\\lambda_t$",
-             "$z_t$ (missing $t$)"),
-  `sqrt(kWh) prior` = c("$N(0, 20^2)$",
-                        "$N(0, 5^2)$ each",
-                        "half-$t$, 3 df, scale 2",
-                        "Uniform on the stationary region",
-                        "$\\nu - 2 \\sim$ Exponential(mean 10)",
-                        "$\\text{Gamma}(\\nu/2, \\nu/2)$ (hierarchical)",
-                        "Implied by the model"),
-  Role = c("Level at the midpoint of the record",
-           "Contrasts around that level",
-           "Size of a one-day shock",
-           "Day-to-day memory; forecasts stay bounded",
-           "Tail weight, with the variance finite",
-           "Downweight extreme days",
-           "The 23 gaps are imputed"),
-  check.names = FALSE
-)
-tab_priors_kbl <- knitr::kable(tab5, escape = FALSE,
-             caption = "Table 5. Priors for the square-root-scale model.")
+# ---- Prior settings: match PRIOR_TAU$sqrt, PRIOR_SIGMA_A$sqrt and nu_exp_mean in src/model.R ----
+TAU_INT     <- 20   # intercept prior SD
+TAU_OTH     <- 5    # SD for the trend, harmonic and day-of-week coefficients
+A_SIGMA     <- 2    # half-t scale for sigma
+DF_SIGMA    <- 3    # half-t degrees of freedom for sigma
+NU_EXP_MEAN <- 10   # prior mean of nu - 2
 
-# ---- Figure 5 ----
-# Prior densities for the sqrt(kWh) model. Values match src/model.R:
-#   intercept N(0, 20^2), other coefficients N(0, 5^2), sigma ~ half-t(3, scale 2),
-#   phi uniform on the stationary region, nu - 2 ~ Exponential(mean 10).
-# Uses from earlier chunks: d (full calendar, date as Date)
-
-TAU_INT <- 20   # intercept prior SD          (PRIOR_TAU$sqrt[1] in model.R)
-TAU_OTH <- 5    # other coefficients prior SD (PRIOR_TAU$sqrt[2])
-A_SIGMA <- 2    # half-t scale for sigma      (PRIOR_SIGMA_A$sqrt)
-
-col_nav <- "#1f4e79"; col_teal <- "#148f77"; col_red <- "#b03a2e"; col_gold <- "#b9770e"
-png(here("R_figures", "03_prior_densities.png"), width = 11, height = 8.2, units = "in", res = 140)
-
-# reference values from the data, used only to show the priors are wide
-sq_p  <- sqrt(d$kwh)                                   # NA on missing days
+# ---- Reference values from the data, used only to show the priors are wide ----
+# Uses d (full calendar) from the Section 1 code
+sq_p  <- sqrt(d$kwh)                                  # NA on missing days
 mon_p <- format(d$date, "%m")
-# largest gap between monthly mean sqrt(kWh) (highest month minus lowest month)
-mon_means <- tapply(sq_p, mon_p, mean, na.rm = TRUE)  # 12 monthly means, names "01".."12"
+mon_means <- tapply(sq_p, mon_p, mean, na.rm = TRUE)  # 12 monthly means of sqrt(kWh)
 hi_m  <- names(which.max(mon_means))
 lo_m  <- names(which.min(mon_means))
-gap_p <- max(mon_means) - min(mon_means)
+gap_p <- max(mon_means) - min(mon_means)              # largest monthly contrast (sqrt kWh)
+sd_p  <- sd(sq_p, na.rm = TRUE)                       # SD of daily sqrt(kWh)
+max_kwh <- max(d$kwh, na.rm = TRUE)
 
-# # August-December gap:
-# gap_p <- mean(sq_p[mon_p == "12"], na.rm = TRUE) - mean(sq_p[mon_p == "08"], na.rm = TRUE)
-sd_p  <- sd(sq_p, na.rm = TRUE)
+# ---- Table 5: priors, their justification, and the Section 6 alternatives ----
+int_hi    <- qnorm(0.975) * TAU_INT                   # 95% prior half-width, intercept
+oth_hi    <- qnorm(0.975) * TAU_OTH                   # 95% prior half-width, other coefficients
+sig_med   <- A_SIGMA * qt(0.75, DF_SIGMA)             # median of the half-t
+sig_q95   <- A_SIGMA * qt(0.975, DF_SIGMA)            # 95th percentile of the half-t
+p_sig_big <- 2 * pt(sd_p / A_SIGMA, DF_SIGMA, lower.tail = FALSE)  # P(sigma > SD of daily sqrt kWh)
+nu_med    <- 2 + NU_EXP_MEAN * log(2)
+p_nu_lt5  <- pexp(5 - 2, rate = 1 / NU_EXP_MEAN)
+p_nu_gt30 <- pexp(30 - 2, rate = 1 / NU_EXP_MEAN, lower.tail = FALSE)
 
+tab5 <- data.frame(
+  Parameter = c("Intercept $\\beta_0$",
+                "Trend, harmonics, day of week $\\beta_1, a_j, b_j, \\delta_k$",
+                "Innovation scale $\\sigma$",
+                "AR coefficient $\\phi_1$",
+                "Degrees of freedom $\\nu$",
+                "Missing days $z_t$",
+                "Latent weights $\\lambda_t$"),
+  Prior = c(sprintf("$N(0, %g^2)$", TAU_INT),
+            sprintf("$N(0, %g^2)$ each", TAU_OTH),
+            sprintf("half-$t$, %g df, scale %g", DF_SIGMA, A_SIGMA),
+            "Uniform$(-1, 1)$; uniform on the stationary region for AR(2)",
+            sprintf("$\\nu - 2 \\sim$ Exponential(mean %g)", NU_EXP_MEAN),
+            "Implied by the model",
+            "$\\text{Gamma}(\\nu/2, \\nu/2)$"),
+  Type = c("Weakly informative", "Weakly informative", "Weakly informative",
+           "Flat within a stationarity constraint", "Weakly informative",
+           "No separate prior", "Part of the likelihood"),
+  Justification = c(
+    sprintf("95%% of the prior lies within ±%.1f √kWh, up to %s kWh per day: far above this household's highest day (%.1f kWh), a typical Sceaux household (about 9.6 kWh; GridLabs, n.d.) and the 864 kWh per day a residential connection can deliver (EDF)",
+            int_hi, format(round(int_hi^2, -1), big.mark = ","), max_kwh),
+    sprintf("95%% of the prior lies within ±%.1f √kWh; the SD is %.1f times the largest gap between monthly means (%.2f √kWh, %s to %s)",
+            oth_hi, TAU_OTH / gap_p, gap_p, month.abb[as.integer(lo_m)], month.abb[as.integer(hi_m)]),
+    sprintf("Prior median %.2f and 95th percentile %.1f √kWh; %.0f%% of the prior lies above %.2f, the SD of daily √kWh itself (Gelman, 2006)",
+            sig_med, sig_q95, 100 * p_sig_big, sd_p),
+    "Shocks fade, so long-horizon forecasts stay bounded; no preference for the sign or size of the day-to-day carry-over",
+    sprintf("Keeps $\\nu > 2$, so the innovation variance is finite; prior median %.1f, $P(\\nu < 5) = %.2f$, $P(\\nu > 30) = %.2f$",
+            nu_med, p_nu_lt5, p_nu_gt30),
+    sprintf("The %d missing days follow the regression and AR process and are imputed in the sampler", sum(!d$observed)),
+    "Writes each $t$ error as a normal error with variance $\\sigma^2/\\lambda_t$ (Section 4)"),
+  `Section 6 alternatives` = c(sprintf("$N(0, %g^2)$ and $N(0, %g^2)$", TAU_INT / 2, TAU_INT * 2),
+                               sprintf("$N(0, %g^2)$ and $N(0, %g^2)$", TAU_OTH / 2, TAU_OTH * 2),
+                               "", "", "Exponential(mean 3) and (mean 30)", "", ""),
+  check.names = FALSE
+)
+tab_priors_kbl <- knitr::kable(tab5, escape = FALSE, align = "lllll", caption = paste(
+  "Table 5. Priors for the square-root-scale model. Reference values come from the observed days and are used",
+  "only to check that each prior is wide; no prior is fitted to the data.",
+  "The last column lists the alternatives refitted in Section 6, one prior at a time (src/09_sensitivity.R)."))
+
+# ---- Figure 5 ----
+col_nav <- "#1f4e79"; col_teal <- "#148f77"; col_red <- "#b03a2e"; col_gold <- "#b9770e"
+png(here("R_figures", "03_prior_densities.png"), width = 11, height = 8.2, units = "in", res = 140)
 par(mfrow = c(2, 2), mar = c(4.2, 4.2, 3.2, 1.2))
 
 # (a) regression coefficients
@@ -845,47 +855,33 @@ axis(1, at = c(-1, 0, 1))
 
 # (d) degrees of freedom: nu - 2 ~ Exp(mean 10)
 nu_grid <- seq(2.02, 48, length.out = 500)
-dn <- dexp(nu_grid - 2, rate = 0.1)
+dn <- dexp(nu_grid - 2, rate = 1 / NU_EXP_MEAN)
 plot(nu_grid, dn, type = "l", lwd = 2, col = col_nav,
      xlab = expression("degrees of freedom" ~ nu), ylab = "prior density", main = "(d) Tail weight")
 abline(v = 2, lty = 2, lwd = 1.5, col = col_red)
-abline(v = 12, lty = 3, lwd = 1.5, col = col_gold)
+abline(v = 2 + NU_EXP_MEAN, lty = 3, lwd = 1.5, col = col_gold)
 text(3.1, 0.085, expression(nu == 2), col = col_red, cex = 0.75, adj = 0)
-text(13.2, 0.07, "prior mean of nu = 12", col = col_gold, cex = 0.75, adj = 0)
+text(3.2 + NU_EXP_MEAN, 0.07, sprintf("prior mean of nu = %g", 2 + NU_EXP_MEAN), col = col_gold, cex = 0.75, adj = 0)
 text(32, 0.04, "nearly\nGaussian", col = col_nav, cex = 0.75)
 dev.off()
 ```
 
 # 3. Prior Distributions
 
+Earlier work on this dataset benchmarks machine-learning forecasters at minute or hourly resolution (e.g., Kim and Cho, 2019; Zaman et al., 2022), so there are no published estimates of our parameters for a comparable household. We therefore use weakly informative priors (Table 5, Figure 5). Each is centred at zero or uniform on its allowed range, so it favours no direction for any effect, and its scale comes from the units of √kWh and from physical limits rather than from the data; data summaries serve only to confirm that each prior is wide.
+
+The normal priors on the regression coefficients keep every plausible value well inside their central 95% but make absurd values unlikely: the intercept prior reaches about 1,540 kWh per day, far beyond what one house can use, and the other coefficient priors are more than twice as wide as the largest monthly contrast in the data. The half-$t$ prior on $\sigma$, recommended over inverse-gamma priors for scale parameters (Gelman, 2006), keeps $\sigma$ positive while its heavy tail allows scales above the spread of the data. Restricting $\phi_1$ to $(-1, 1)$ is a modelling constraint rather than a belief about its size: the errors become stationary, so shocks fade and long-range forecasts stay bounded. The exponential prior on $\nu - 2$ keeps the innovation variance finite and gives real weight to both heavy and nearly normal tails, so the data decide. The missing days need no prior of their own, because the model implies their distribution.
+
+With 1,417 observed days, the likelihood should outweigh these priors, except perhaps for $\nu$, which only the most extreme days inform. Section 6 therefore refits the model with each prior changed in turn (Table 5, last column).
+
 ```{r tab-priors}
 tab_priors_kbl
 ```
 
-```{r fig-priors, out.width = "100%", fig.cap = "Figure 5. Prior densities on the square-root scale: (a) regression coefficients, with the largest gap between monthly mean square-root consumption for reference; (b) innovation scale, with the standard deviation of daily square-root consumption; (c) AR(1) coefficient, uniform on the stationary region; (d) degrees of freedom."}
+```{r fig-priors, out.width = "100%", fig.cap = "Figure 5. Prior densities on the square-root scale: (a) regression coefficients, with the largest gap between monthly mean square-root consumption for reference; (b) innovation scale, with the standard deviation of daily square-root consumption; (c) AR(1) coefficient, uniform on the stationary region; (d) degrees of freedom, with the prior mean."}
 knitr::include_graphics(here("R_figures", "03_prior_densities.png"))
 ```
-This dataset was previously been used mainly to benchmark machine-learning forecasters at minute or hourly resolution (e.g., Kim & Cho, 2019), including Bayesian neural networks for uncertainty estimation (Zaman et al., 2022). We instead fit an interpretable Bayesian regression to daily totals, with seasonal, weekly, autoregressive and heavy-tailed components. There are no published estimates of these model parameters for a comparable household, so we utilized weakly informative priors to allow our data to be the primary thing informing our posterior distributions (Table 5, Figure 5). 
 
-The priors are centered at zero and are not derived from the data; we compare them with summaries of the data only to confirm that they are wide relative to plausible values. With our large sample size (over 1,000 training days), we expect posterior estimates to be insensitive to this choice, but the tail parameter $\nu$, which the data inform least, may not be. Therefore, Section 6 refits the model with the coefficient prior standard deviations halved and doubled, and with the prior on $\nu$ shifted toward heavier and toward lighter tails.
-
-First, the intercept $\beta_0$ has a normal prior, which is continuous, symmetric, and allows any real value. Its standard deviation of 20 $\sqrt{\text{kWh}}$ places 95% of the prior within ±40 $\sqrt{\text{kWh}}$ (up to 40² = 1,600 kWh/day), far above the current average for a Sceaux household (about 9.6 kWh per day; GridLabs, n.d.), this household’s highest observed day (about 80 kWh), and even the physical maximum of a residential connection (864 kWh/day; EDF, Tarif Bleu), so the prior does not constrain the intercept. Our mean is 0 not because we believe the baseline level is zero, but because with that standard deviation, it is nonrestrictive (Figure 5a).  
-
-Second, our other regression coefficients $\beta_1, a_j, b_j, \delta_k$ also have normal priors centered at 0 for similar reasons: it is continuous, symmetric, lets the data choose the direction of each effect, and makes extremely large effects less plausible. Their standard deviation of 5 √kWh is about twice the largest contrast in the data (Figure 5a).
-
-Third, the innovation scale $\sigma$ has a half-$t$ prior with 3 degrees of freedom and scale 2 √kWh (Gelman, 2006). It keeps $\sigma$ positive and its heavy tails allows scales well above the standard deviation of daily √kWh, 1.01 (Figure 5b). 
-
-Fourth, the autoregressive coefficients have a uniform prior on the stationary region: $(-1, 1)$ for AR(1), and the corresponding stationary region for the higher-order models compared in Section 5. Within that region every value is equally likely, and shocks fade over time, so long-horizon forecasts stay bounded (Figure 5c).
-
-Fifth, for our degrees of freedom $\nu$, we choose an exponential prior with mean 10 for $\nu-2$, for similar reasons of why we chose the half-t distribution. We want to restrict the values to values greater than 2 (the t distribution only has finite variance when the degrees of freedom are greater than 2), and we're trying to accommodate heavy-tailed innovations [(the exponential distribution allows us to do this while also assigning less probability to extremely large values. The degrees of freedom determine how heavy the innovation distribution's tails are: smaller values produce heavier tails, while larger values produce increasingly Gaussian-like distributions. The Exponential prior allows us to accommodate heavy-tailed innovations by assigning substantial prior density to values of $\nu$ near 2, while progressively reducing the density assigned to extremely large values of $\nu$. **Shorter alternative of this paragraph:** Fifth, an exponential prior with mean 10 on $\nu - 2$ keeps $\nu$ above 2, so the innovation variance is finite. It puts substantial weight on small values (heavy tails) and less on very large ones (nearly Gaussian tails), so the data decide how heavy the tails are (Figure 5d).
-
-#! prior for latent weights ???
-
-The 23 missing days need no separate prior: their distribution is implied by the regression and the autoregressive process, and they are sampled within the Gibbs sampler.
-
-Together, these choices regularize the parameters without imposing a direction or size on the household's demand patterns in advance.
-
-# !!!UPDATED UP TO HERE
 # 4. Posterior Computation and Diagnostics
 
 ```{r post-run, include = FALSE}
@@ -1066,6 +1062,8 @@ knitr::include_graphics(here("R_figures", "10_freq_vs_bayes.png"))
 # REFERENCES:
 
 Box, G. E. P., & Cox, D. R. (1964). An analysis of transformations. Journal of the Royal Statistical Society: Series B, 26(2), 211–252.
+
+Gelman, A. (2006). Prior distributions for variance parameters in hierarchical models. Bayesian Analysis, 1(3), 515–533.
 
 Hébrail, G., & Bérard, A. (2012). Individual household electric power consumption [Data set]. UCI Machine Learning Repository. <https://doi.org/10.24432/C58K54>
 
