@@ -24,7 +24,6 @@ CHAIN_COLS <- c("#1f4e79", "#b03a2e", "#148f77", "#b9770e")
 NAV <- "#1f4e79"
 RED <- "#b03a2e"
 WIN <- 14L   # window, in days, of the block-level predictive check
-
 read_daily <- function(path) {
   d <- read.csv(path, stringsAsFactors = FALSE)
   d$date <- as.Date(d$date)
@@ -362,16 +361,17 @@ main <- function() {
   ok <- is.finite(od$ppp)
 
   # block-level check: each 14-day mean against replicated series from the
-  # fitted model (systematic part plus a stationary AR(1) + t error)
-  pp <- f$path_pars
-  n_paths <- nrow(pp)
-  per_chain <- n_paths / n_chain
-  path_every <- max(1L, n_draw %/% per_chain)
-  rows_b <- as.vector(outer((seq_len(per_chain) - 1L) * path_every + 1L, (seq_len(n_chain) - 1L) * n_draw, `+`))
+  # fitted model (systematic part plus a stationary AR(1) + t error), one
+  # series per posterior draw. p-values are compared with 0.01 and 0.99, so
+  # the check needs thousands of series to be stable.
   set.seed(3)
+  rows_b <- seq_len(nrow(b))
+  n_paths <- length(rows_b)
   mu_s <- b[rows_b, , drop = FALSE] %*% t(f$X)
   nT <- ncol(mu_s)
-  sig_s <- pp[, 1]; nu_s <- pp[, 2]; phi_s <- pp[, 4]
+  sig_s <- flatten(f, "sigma")[rows_b]
+  nu_s <- flatten(f, "nu")[rows_b]
+  phi_s <- as.matrix(flatten(f, "phi"))[rows_b, 1]
   lam_s <- matrix(rgamma(n_paths * nT, shape = rep(nu_s / 2, nT), rate = rep(nu_s / 2, nT)), n_paths, nT)
   eta_s <- matrix(rnorm(n_paths * nT), n_paths, nT) * sig_s / sqrt(lam_s)
   eps_s <- matrix(0, n_paths, nT)

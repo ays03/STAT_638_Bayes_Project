@@ -267,7 +267,7 @@ def fit(
             ss += float(eps[:p] @ np.linalg.solve(Vunit, eps[:p]))
             n_eff += p
         shape = 0.5 * (nu_sigma + n_eff)
-        rate = nu_sigma / (2.0 * xi) + 0.5 * ss
+        rate = nu_sigma / xi + 0.5 * ss
         sigma2 = float(rate / rng.gamma(shape, 1.0))
         xi = float((1.0 / sigma_A**2 + nu_sigma / sigma2) / rng.gamma(0.5 * (nu_sigma + 1), 1.0))
 

@@ -5,7 +5,12 @@
 # contiguous blocks to mimic the real missingness pattern, then checks that 95%
 # credible intervals cover the true values and that the posterior means are close.
 #
-#   Rscript src/02_validate_sampler.R
+# One dataset is a noisy check: by chance a single realisation can push 2 or 3 of
+# 15 intervals off the truth. The sampler is therefore run on N_REP independent
+# datasets, and each parameter's coverage is reported across them.
+#
+#   Rscript src/02_validate_sampler.R        # 20 datasets, about 4 minutes on 4 cores
+#   Rscript src/02_validate_sampler.R 5      # fewer datasets, for a quick check
 
 script_root <- function() {
   args <- commandArgs(trailingOnly = FALSE)
@@ -24,13 +29,14 @@ simulate <- function(Tlen = 1440, J = 2, p = 1, seed = 0) {
   dow <- (t + 5) %% 7
   des <- build_design(t, dow, J)
   X <- des$X
-  beta_true <- c(3.20, -0.04, 0.05, 0.42, 0.02, -0.11, 0.06, 0.07, -0.05, 0.03, 0.18, 0.17)
+  # truths on the sqrt(kWh) scale, close to the posterior means of the final model
+  beta_true <- c(4.85, -0.05, 0.40, 0.75, -0.25, 0.15, 0.16, 0.19, -0.07, 0.09, 0.52, 0.49)
   stopifnot(length(beta_true) == ncol(X))
-  phi_true <- 0.45
-  if (p != 1) phi_true <- rep(0.45, p)[seq_len(p)]
+  phi_true <- 0.47
+  if (p != 1) phi_true <- rep(0.47, p)[seq_len(p)]
   phi_true <- as.numeric(phi_true)[seq_len(p)]
-  sigma_true <- 0.24
-  nu_true <- 5.0
+  sigma_true <- 0.58
+  nu_true <- 8.0
 
   eps <- numeric(Tlen)
   if (p > 0) {
@@ -45,7 +51,8 @@ simulate <- function(Tlen = 1440, J = 2, p = 1, seed = 0) {
     eps <- eta
   }
   z <- as.numeric(X %*% beta_true + eps)
-  y <- exp(z)
+  stopifnot(all(z > 0))
+  y <- z^2
 
   observed <- rep(TRUE, Tlen)
   for (start in sample.int(Tlen - 10, 6)) {
@@ -62,11 +69,12 @@ main <- function() {
   sim <- simulate()
   cat(sprintf("simulated T=%d, observed=%d, missing=%d\n",
               length(sim$y), sum(sim$observed), sum(!sim$observed)))
-  cat("fitting 4 chains x 12000 iterations ...\n")
+  # same chain settings as the real-data fits in src/06_fit_sqrt.R
+  cat("fitting 4 chains x 40000 iterations ...\n")
   fitres <- fit_chains(
     sim$y, sim$observed, sim$t, sim$dow,
-    J = sim$J, p = sim$p, heavy = TRUE, scale = "log",
-    n_iter = 12000, burn = 4000, thin = 4, n_chains = 4, seed = 11
+    J = sim$J, p = sim$p, heavy = TRUE, scale = "sqrt",
+    n_iter = 40000, burn = 10000, thin = 5, n_chains = 4, seed = 11
   )
 
   lines <- character()
@@ -115,7 +123,7 @@ main <- function() {
   add("MISSING-DAY IMPUTATION")
   zi <- flatten(fitres, "z_imputed")
   sds <- apply(zi, 2, sd)
-  add(sprintf("  %d imputed days; posterior sd of imputed log kWh ranges %.3f to %.3f",
+  add(sprintf("  %d imputed days; posterior sd of imputed sqrt(kWh) ranges %.3f to %.3f",
               ncol(zi), min(sds), max(sds)))
   add("  (should be near the marginal error sd, larger for days inside long gaps)")
 

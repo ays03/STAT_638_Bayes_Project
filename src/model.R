@@ -331,7 +331,7 @@ fit <- function(
       n_eff <- n_eff + p
     }
     shape <- 0.5 * (nu_sigma + n_eff)
-    rate <- nu_sigma / (2 * xi) + 0.5 * ss
+    rate <- nu_sigma / xi + 0.5 * ss
     sigma2 <- rate / rgamma(1, shape = shape, scale = 1)
     xi <- (1 / sigma_A^2 + nu_sigma / sigma2) / rgamma(1, shape = 0.5 * (nu_sigma + 1), scale = 1)
 

@@ -9,7 +9,7 @@
 #      nu_light     nu - 2 ~ Exponential(mean 30), favouring nearly Gaussian tails
 #    Seed and likelihood terms match `main` in src/06_fit_sqrt.R, so every
 #    difference from the reported posterior comes from the prior. MCMC settings
-#    match too, except that nu_light runs twice as long to reach Rhat < 1.01.
+#    match too, except that nu_heavy and nu_light run twice as long to reach Rhat < 1.01.
 # B. Posterior predictive checks of the final model: whole series replicated
 #    from the posterior and compared with the data on six statistics.
 # C. Coverage of the held-out predictive intervals by season.
@@ -39,8 +39,9 @@ RED <- "#b03a2e"
 PRIORS <- list(
   coef_half = list(prior_tau = c(10, 2.5), label = "Coefficient SDs halved"),
   coef_double = list(prior_tau = c(40, 10), label = "Coefficient SDs doubled"),
-  nu_heavy = list(nu_exp_mean = 3, label = "nu - 2 ~ Exp(mean 3)"),
-  # nu mixes more slowly when its prior allows large values, so this chain is twice as long
+  # nu mixes more slowly under either alternative prior, so these chains are twice as long
+  nu_heavy = list(nu_exp_mean = 3, label = "nu - 2 ~ Exp(mean 3)",
+                  mcmc = list(n_iter = 80000, burn = 20000, thin = 10, n_chains = 4)),
   nu_light = list(nu_exp_mean = 30, label = "nu - 2 ~ Exp(mean 30)",
                   mcmc = list(n_iter = 80000, burn = 20000, thin = 10, n_chains = 4))
 )
