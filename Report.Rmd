@@ -19,18 +19,26 @@ library(here)
 
 # 1. Scientific Question and Data
 
-Household electricity use follows routines, the week and the seasons, and planning needs forecasts with honest uncertainty. Our question is: **how does one household's daily electricity use change over time, and how well, and with what uncertainty, can we predict it from days to a year ahead?** The project breaks this into six questions:
+Household electricity use varies over time because of household activity, weekly patterns, seasonal changes, and many other factors. Our objective is to characterize temporal patterns in daily household electricity consumption, and develop a Bayesian analysis to predict future electricity demand. The project breaks this into six questions:
 
-1.  How does daily consumption vary over the study period?
-2.  Is there a long-term increase or decrease?
-3.  What is the annual pattern, and does a second harmonic improve on the first?
-4.  Are there systematic weekly patterns?
-5.  How accurately can future days be predicted, and how does the uncertainty change with the horizon?
-6.  Are there periods of unusual use that the model does not explain?
+1.  How does daily household electricity consumption vary over the study period?
+2.  Is there evidence of a long-term increase or decrease in electricity consumption?
+3.  What annual seasonal pattern is present, and does the second harmonic provide an important improvement over the first-harmonic representation?
+4.  Are there systematic weekly patterns in electricity demand?
+5.  How accurate can future daily electricity consumption be predicted, and how does predictive uncertainty change with the forecasting horizon?
+6.  Are there periods of unusually high or low electricity consumption that are not adequately explained by the fitted model?
 
-The data are the UCI *Individual Household Electric Power Consumption* records (Hébrail & Bérard, 2012): 2,075,259 one-minute readings from one house in Sceaux, France, from December 2006 to November 2010. The unit of analysis is a day. Each reading of `Global_active_power` is the average power (kW) over one minute, so daily energy use is $Y_t = \frac{1}{60}\sum_{m=1}^{1440} P_{t,m}$ kWh. The predictors are calendar terms only: a linear trend, sine and cosine terms with a 365-day period, and the day of the week.
+The UCI *Individual Household Electric Power Consumption* dataset records 2,075,259 one-minute electric power consumption measurements from a single house (not a grid) in Sceaux, France between December 2006 and November 2010 (47 months). Each instance contains nine recorded variables: `Date`, `Time`, `Global_active_power`,`Global_reactive_power`, `Voltage`, `Global_intensity`,`Sub_metering_1`,`Sub_metering_2`,and `Sub_metering_3`. 
 
-About 1.25% of minutes are missing, and they come in runs. We keep a day if at least 95% of its minutes were recorded, filling its few gaps with that day's average power; other days stay on the calendar as missing. This gives 1,417 observed and 23 missing days (Figure 1b). Appendix A documents the cleaning.
+The unit of analysis is a day. Each reading of `Global_active_power` is the average power (kW) over one minute, so daily energy use is $$\begin{aligned}
+Y_d &= \sum_{m=1}^{1440} E_m \\[6pt]
+&= \sum_{m=1}^{1440} \left( \text{GAP}_m * \frac{1}{60} \right) \\[6pt]
+&= \frac{1}{60} \sum_{m=1}^{1440} \text{GAP}_m
+\end{aligned}$$ kWh, and that daily energy use is our outcome variable.  
+
+`Time` is used in data cleaning to verify every full day contains exactly 1440 unique minutes. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The other variables are not used in our analysis due to either being collinear with `Global_active_power`, irrelevant to active energy consumption, or out of scope for our objective. 
+
+About 1.25% of minutes are missing. We keep a day if at least 95% of its minutes were recorded, filling its few gaps with that day's average power, while other days stay on the calendar as missing. This gives 1,417 observed and 23 missing days (Figure 1b). Appendix A documents the cleaning.
 
 ```{r aggregate, include = FALSE, eval = !file.exists(here::here("data", "daily.csv"))}
 # runs only when the daily.csv file is missing
@@ -306,9 +314,6 @@ boxplot(split(y, factor(dow, levels = 0:6)), names = DOW_NAMES, col = "#d6eaf8",
 # show the saved figure in the knitted HTML
 # knitr::include_graphics(here("R_figures", "01d_overview.png"))
 ```
-Use is high in winter and low in summer, with no obvious drift, and higher at weekends (Figure 1). Week-long stretches of very low use, mostly in August, look like vacations (absence blocks). Calendar-regression residuals are autocorrelated (Table 1). A Box–Cox likelihood with AR(1) errors peaks near $\lambda = 0.4$ (Figure 2), and the square root gives nearly symmetric innovations (Table 2), though with heavy tails (Figure 3c). Correlation outlasts AR(1), partly because of the blocks (Figure 4, Tables 4–5). The 23 missing days do not cluster near the blocks (Table 3), so we treat them as missing at random (MAR). Appendix A gives details.
-
-
 
 ```{r, include=FALSE}
 d <- read.csv(here("data", "daily.csv")) 
@@ -354,7 +359,6 @@ knitr::kable(round(acf_tab, 2),
                               "day of week) on each scale. Values beyond ±", round(1.96 / sqrt(n_obs), 2),
                               " differ from zero at the 5% level."))
 ```
-
 
 ```{r}
 # Box-Cox that allows AR(1) errors 
@@ -427,7 +431,6 @@ knitr::kable(round(cmp, 2),
                              "Normal errors have skew 0 and kurtosis 3."))
 # A Box–Cox profile likelihood allowing AR(1) errors favors λ ≈ 0.4 with or without the absence blocks. The square-root scale (λ = 0.5) gives nearly symmetric innovations (skew −0.07 vs 0.43), lighter tails, and more even monthly spread (SD ratio 1.96 vs 2.37), so we will model √kWh and report results in kWh through Monte Carlo transformation of posterior draws.
 ```
-
 
 ```{r fig3, echo = FALSE, fig.width = 12, fig.height = 7.5, out.width = "100%", fig.cap = "Figure 3. Residual checks on the square-root scale, using innovations from the regression with AR(1) errors (trend + two harmonics + day of week): (a) over time, with absence-block days in red; (b) against one-step fitted values; (c) normal Q-Q plot."}
 # dir.create(here("R_figures"), showWarnings = FALSE)
@@ -507,7 +510,6 @@ knitr::kable(miss_rates, align = "lrrr",
              caption = "Table 3. Share of days missing, overall and near absence blocks.") |>
   kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
 ```
-
 
 ```{r fig4, echo = FALSE, fig.width = 15, fig.height = 4, out.width = "100%", fig.cap = "Figure 4. (a) Residual ACF and (b) residual PACF on the square-root scale, for all observed days (bars) and with absence blocks removed (red); (c) residual SD by month."}
 
@@ -673,10 +675,14 @@ knitr::kable(round(tab_bic, 1), align = "rrrrr",
 
 ```
 
+There's no obvious long-term drift, but we can see seasonality and day-of-week effects (Figure 1). A Box–Cox likelihood with AR(1) errors peaks near $\lambda = 0.4$, which suggests a square-root transformation due to being close to $\lambda = 0.5$ (Figure 2). With the transformation, heteroskedasticity is not a major concern, and we have a heavy-tailed but symmetrical distribution (Figure 3). The 23 missing days don't cluster near the absence blocks (Table 3) and are not correlated with high/low consumption (Figure 1), so we treat them as missing at random (MAR) and drop them from our analysis. After removing trend, seasonality, and day-of-week effects, the square-root residuals remain autocorrelated (lag-1 autocorrelation 0.47, falling to 0.35 without the absence blocks, which are 4.0% of days but 19.1% of the residual sum of squares), with memory lasting a few days rather than following a weekly cycle (Figure 4, Table 4). BIC favours AR(4) errors (Table 5), but its advantage halves without the blocks and assumes normal errors, whereas our heavy-tailed innovations can absorb these episodes, so we use AR(1) errors as the simplest form of carry-over and compare AR(2) and AR(4) in Section 6. 
+
+Our key assumptions are: (1) On the square-root scale, the mean is a linear trend, two annual harmonics (alternatives checked in Section 6), and additive day-of-week effects that are the same throughout the year (2) Errors follow a stationary AR(1) process (alternatives checked in Section 6) (3) Innovations are independent $t_\nu(0,\sigma)$ with a single scale, so occasional extreme days such as absences are down-weighted (4) Missing days are MAR
+ 
 
 ## 2.2 The model
 
-We model $z_t = \sqrt{Y_t}$ as a calendar regression with AR errors and $t$ innovations:
+Based on those findings, we model $z_t = \sqrt{Y_t}$ as a regression with AR errors and $t$ innovations:
 
 $$\begin{align}
 z_{t} &= x_{t}^{T}\beta+\varepsilon_{t}\\
@@ -685,7 +691,7 @@ z_{t} &= x_{t}^{T}\beta+\varepsilon_{t}\\
 \eta_{t}\sim t_{\nu}(0,\sigma)
 \end{align}$$
 
-Here $\beta_0$ is the level at the middle of the record ($\bar t$) and $\beta_1$ the change per year (Q2); $a_j, b_j$ shape the annual cycle (Q3); and $\delta_k$ is day $k$ minus Monday (Q4). $\phi_l$ is the share of a past day's deviation carried into today, $\sigma$ the scale of the daily shock $\eta_t$, and $\nu$ its tail weight. We use $J = 2$ and AR(1) errors, comparing $J = 1$ and AR(2)–AR(4) in Section 6. The harmonics and weekday terms match Figure 1, the AR errors match Figure 4 and let uncertainty grow with horizon (Q5), and the $t$ innovations stop extreme days dominating.
+Here $\beta_0$ is the level at the middle of the record ($\bar t$) and $\beta_1$ the change per year (Q2); $a_j, b_j$ shape the annual cycle (Q3); and $\delta_k$ is day $k$ minus Monday (Q4). $\phi_l$ is the share of a past day's deviation carried into today, $\sigma$ the scale of the daily shock/innovation $\eta_t$, and $\nu$ its tail weight. We use $J = 2$ and AR(1) errors, comparing $J = 1$ and AR(2)–AR(4) in Section 6. The $t$ innovations stop extreme days dominating. The posterior predictive distribution answers Q5, and posterior predictive checks answer Q6.
 
 With $O$ the set of observed days, a day enters the likelihood only if it and its previous $p$ days are in $O$,
 $$
@@ -705,11 +711,6 @@ L(\beta, \phi, \sigma, \nu)
 \left(1 + \frac{\eta_t^2}{\nu\sigma^2}\right)^{-\frac{\nu+1}{2}} .
 \end{aligned}
 $$
-Missing days drop out rather than being imputed; conditioning each observed run on its first day (Box et al., 2015) leaves 1,408 terms.
-
-**Assumptions.** Independent innovations with one scale all year (checked in Section 6), stationary errors, additive seasonal and weekly effects, MAR missingness, and the mandated 365-day period.
-
-**Target quantities.** The typical day $(x_t^\top\beta)^2$ answers Q1, Q3 and Q4; $\beta_1$ answers Q2; the posterior predictive distribution answers Q5; posterior predictive checks answer Q6.
 
 # 3. Prior Distributions
 
@@ -813,19 +814,18 @@ text(3.1, 0.085, expression(nu == 2), col = col_red, cex = 0.75, adj = 0)
 text(13.2, 0.07, "prior mean of nu = 12", col = col_gold, cex = 0.75, adj = 0)
 text(32, 0.04, "nearly\nGaussian", col = col_nav, cex = 0.75)
 ```
-Earlier work on this dataset benchmarks machine-learning forecasters (e.g., Kim & Cho, 2019; Zaman et al., 2022), so there are no published estimates to borrow. We use weakly informative priors (Table 6, Figure 5). Each is centred at zero or flat, so none favours a direction, and each scale comes from the units of √kWh and physical limits; the data only confirm that the priors are wide.
 
-**Intercept.** $\beta_0 \sim N(0, 20^2)$ puts 95% of its mass within about ±40 √kWh, or up to 1,600 kWh per day: far above this house's highest day (about 80 kWh), a typical Sceaux household (about 9.6 kWh; GridLabs, n.d.) and the most a residential connection can deliver (864 kWh; EDF, n.d.).
+There are no published estimates of these model parameters for a comparable household, so we utilized weakly informative priors to allow our data to be the primary thing informing our posterior distributions (Table 6, Figure 5).
 
-**Other coefficients.** The trend, harmonic and weekday coefficients each get $N(0, 5^2)$, more than twice the largest contrast in the data (the winter-to-summer gap is about 1.9 √kWh), so realistic effects of either sign are easy and absurd ones are not.
+First, the intercept $\beta_0$ has a normal prior, which is continuous, symmetric, and allows any real value. Its standard deviation of 20 $\sqrt{\text{kWh}}$ places 95% of the prior within ±40 $\sqrt{\text{kWh}}$ (up to 40² = 1,600 kWh/day), far above the current average for a Sceaux household (about 9.6 kWh per day; GridLabs, n.d.), this household’s highest observed day (about 80 kWh), and even the physical maximum of a residential connection (864 kWh/day; EDF, Tarif Bleu), so the prior does not constrain the intercept. Our mean is 0 not because we believe the baseline level is zero, but because with that standard deviation, it is nonrestrictive (Figure 5a).  
 
-**Innovation scale.** A half-$t$ prior with 3 degrees of freedom and scale 2 (Gelman, 2006) keeps $\sigma$ positive, and its heavy tail allows values well above the SD of daily √kWh (1.01).
+Second, our other regression coefficients $\beta_1, a_j, b_j, \delta_k$ also have normal priors centered at 0 for similar reasons: it is continuous, symmetric, lets the data choose the direction of each effect, and makes extremely large effects less plausible. Their standard deviation of 5 √kWh is about twice the largest contrast in the data (Figure 5a). The trend prior $\beta_1 \sim N(0, 5^2)$ allows yearly changes of up to about ±100 kWh/day (95%) for a typical 25 kWh/day, so it is weak about the size of any trend. Because of its normal distribution though, this width makes it lean toward “no trend.”
 
-**AR coefficient.** $\phi$ is uniform on the stationary region, $(-1, 1)$ for AR(1). This is a constraint, not a belief about its size: shocks fade, so long-range forecasts stay bounded.
+Third, the innovation scale $\sigma$ has a half-$t$ prior with 3 degrees of freedom and scale 2 √kWh (Gelman, 2006), which keeps $\sigma$ positive, and allows scales well above the standard deviation of daily √kWh, 1.01 (Figure 5b). 
 
-**Degrees of freedom.** $\nu - 2 \sim$ Exponential(mean 10) keeps the innovation variance finite. On an interpretable scale, the prior median of $\nu$ is 8.9, with a 26% chance of very heavy tails ($\nu < 5$) and a 6% chance of nearly normal ones ($\nu > 30$), so the data decide.
+Fourth, the autoregressive coefficients have a uniform prior on the stationary region: $(-1, 1)$ for AR(1), and the corresponding stationary region for the higher-order models compared in Section 5. Within that region every value is equally likely, and shocks fade over time, so long-horizon forecasts stay bounded (Figure 5c).
 
-With about 1,400 likelihood terms the data should dominate, except perhaps for $\nu$; Section 6 tests this.
+Fifth, an exponential prior with mean 10 on $\nu - 2$ keeps $\nu$ above 2, so the innovation variance is finite. It puts substantial weight on small values (heavy tails) and less on very large ones (nearly Gaussian tails), so the data decide how heavy the tails are (Figure 5d). 
 
 # 4. Posterior Computation and Diagnostics
 
@@ -3131,11 +3131,7 @@ Zaman, M., Saha, S., Zohrabi, N., & Abdelwahed, S. (2022). Uncertainty estimatio
 
 # Appendix A. Data preparation and exploratory details (supplementary)
 
-**Variables.** The raw file has nine columns: `Date`, `Time`, `Global_active_power`, `Global_reactive_power`, `Voltage`, `Global_intensity` and three sub-meters. Only `Global_active_power` enters the model, after conversion to daily energy. `Date` builds the trend, harmonic and day-of-week predictors, and `Time` is used to check that every full day has exactly 1,440 distinct minutes. Reactive power and voltage do not measure active energy use, and `Global_intensity` is nearly collinear with active power, so we drop them. The sub-meters cover only part of the house, so we use them only as a consistency check: their daily total never exceeds the whole-house total on any observed day.
-
-**Cleaning.** Missing readings are coded as `?`, and dates are written day first. Of the 2,075,259 minutes, 25,979 (1.25%) have no power reading. We dropped the first and last days because they are partial, and confirmed that every remaining day has 1,440 minute rows with no duplicate time stamps. For each day we computed coverage = observed minutes / 1,440 and kept days with coverage of at least 0.95 as observed. On those days each missing minute is filled with the day's average power, which is the same as scaling the day's total up to 1,440 minutes. Days under the threshold stay on the calendar as missing rather than being deleted. Without this rule, a day that lost several hundred minutes would look like a very low-use day and would show up as a false anomaly under Q6. The absence blocks are fully recorded, so they are real low-use days, not missing data. In the end there are 1,417 observed days and 23 missing ones: 9 with no readings at all and 14 below 95% coverage. To rebuild `data/daily.csv`, download the UCI file into `data/` and run the `aggregate` chunk.
-
-**From power to energy.** `Global_active_power` is power in kW averaged over one minute, and one minute is 1/60 of an hour, so the energy used in minute $m$ is $E_m = P_m / 60$ kWh. Summing over the 1,440 minutes of day $t$ gives $Y_t = \frac{1}{60}\sum_{m=1}^{1440} P_{t,m}$. This is a sum divided by 60, not an average; treating it as an average would understate daily use by a factor of 24.
+**Cleaning.** Missing readings are coded as `?`, and dates are written day first. Of the 2,075,259 minutes, 25,979 (1.25%) have no power reading. We dropped the first and last days because they are partial, and confirmed that every remaining day has 1,440 minute rows with no duplicate time stamps. For each day we computed coverage = observed minutes / 1,440 and kept days with coverage of at least 0.95 as observed. On those days each missing minute is filled with the day's average power, which is the same as scaling the day's total up to 1,440 minutes. Days under the threshold stay on the calendar as missing rather than being deleted. Without this rule, a day that lost several hundred minutes would look like a very low-use day and would show up as a false anomaly under Q6. In the end there are 1,417 observed days and 23 missing ones: 9 with no readings at all and 14 below 95% coverage. To rebuild `data/daily.csv`, download the UCI file into `data/` and run the `aggregate` chunk.
 
 **Exploratory analysis in detail.** An exact Kalman-filter likelihood (Durbin & Koopman, 2012) would also use the links across the 8 gaps that the conditional likelihood drops; with about 1,400 days the difference is negligible. Ordinary least-squares residuals are strongly autocorrelated on every scale (Table 1), so we chose the response scale with a Box–Cox profile likelihood that allows AR(1) errors (Box & Cox, 1964). The profile likelihood peaks at $\hat\lambda \approx 0.4$ with or without the absence-block days and is nearly flat between 0.3 and 0.5 (Figure 2), so we model the square root, $z_t = \sqrt{Y_t}$ (in $\sqrt{\text{kWh}}$). It gives nearly symmetric innovations (skew −0.07) and the lowest kurtosis (4.10), while the log over-corrects (skew −0.44; Table 2). Kurtosis stays above 3 on every scale, so normal errors would have tails that are too thin. We split each day's error into a part carried over from earlier days and a new shock (the innovation), and give the innovation a $t$ distribution whose degrees of freedom $\nu$ are estimated from the data. On the square-root scale the residuals stay centred on zero (Figure 3a), show no clear funnel against the fitted values (Figure 3b), and have heavy tails at both ends (Figure 3c), which is what the $t$ innovations are for. Inside the absence blocks, though, they stay negative for many days in a row, while elsewhere there are no long same-sign runs. Neither AR(1) errors nor $t$ innovations are built for a shift that lasts weeks, so we return to the blocks in Sections 5 and 6. The missing days do not cluster around the absence blocks: 1 of the 81 days in or within three days of a block is missing (1.2%), against 1.6% elsewhere (Table 3). Nine of the 23 have no readings at all, which points to recording failures rather than the meter being switched off before a trip. We therefore treat them as missing at random (MAR), which lets us leave them out of the likelihood (Section 2.2). MAR cannot be checked from the observed data, so it remains an assumption. After removing the trend, season and weekday effects, the residuals are still correlated: the lag-1 autocorrelation is 0.47, and it decays more slowly than AR(1) errors would imply (Figure 4, Table 4). The absence blocks explain part of this. They are 4.0% of observed days but 19.1% of the residual sum of squares, and removing them lowers the lag-1 autocorrelation to 0.35. The partial autocorrelations (Figure 4b) show a few days of extra memory, not a weekly cycle: lags 2–4 exceed the $\pm 0.05$ bounds, and later lags are small apart from an isolated negative value at lag 8. BIC prefers AR(4) errors with or without the blocks (Table 5), but the gap to AR(1) halves once the blocks are removed (31 versus 67), so part of the extra memory comes from a few long, unusual episodes, and BIC here assumes normal errors. We therefore use AR(1) errors as the simplest form of day-to-day carry-over and compare AR(2) and AR(4) with WAIC and held-out forecasts in Section 6.
 
