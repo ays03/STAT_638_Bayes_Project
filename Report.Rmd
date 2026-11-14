@@ -167,7 +167,7 @@ For the analysis, `daily.csv` is used. It contains the response variable $Y_d$ a
 
 ## 2.1 General Patterns
 
-```{r fig1, echo = FALSE, fig.width = 14, fig.height = 10.5, out.width = "100%", fig.cap = "Figure 1. (a) Daily consumption with missing days marked in red; (b) daily data coverage with the 95% threshold; (c) annual shape by year with one- and two-harmonic fits; (d) weekdays versus weekends; (e) consumption by day of week."}
+```{r fig1, echo = FALSE, fig.width = 14, fig.height = 10.5, out.width = "100%", fig.cap = "Figure 1. (a) Daily consumption; (b) daily data coverage with the 95% threshold; (c) annual shape by year with one- and two-harmonic fits; (d) weekdays vs weekends; (e) consumption by day of week."}
 #dir.create(here("R_figures"), showWarnings = FALSE)
 # ---- Figure 1 (data overview), code taken from src/01d_indepth_eda_short_.R
 ORIGIN <- as.Date("2006-12-17")   # t = 1
@@ -310,8 +310,10 @@ legend("topright", legend = c("daily kWh", "missing day"), col = c("#1f4e79", "#
 
 # (b) daily data coverage: fraction of the 1,440 minutes with a reading; days below the
 #     dashed 95% line are treated as missing (d = full calendar from daily.csv)
-plot(d$date, d$coverage, type = "h", lwd = 0.6, col = "#b03a2e",
-     ylab = "fraction of 1440 min observed", xlab = "", main = "(b) Daily data coverage", ylim = c(0, 1))
+plot(d$date, d$coverage, type = "n",
+     ylab = "fraction of 1440 min observed", 
+     xlab = "", main = "(b) Daily data coverage", ylim = c(0, 1))
+rect(d$date - 0.5, 0, d$date + 0.5, d$coverage, col = "#b03a2e", border = NA)   # one touching bar per day
 abline(h = MIN_COVERAGE, lty = 2)
 legend("bottomright", legend = sprintf("retention threshold %.2f", MIN_COVERAGE), lty = 2, bty = "n", cex = 0.8)
 
@@ -339,8 +341,9 @@ boxplot(split(y, factor(dow, levels = 0:6)), names = DOW_NAMES, col = "#d6eaf8",
 # show the saved figure in the knitted HTML
 # knitr::include_graphics(here("R_figures", "01d_overview.png"))
 ```
+Figure 1 shows daily household electricity consumption over the whole record, together with its seasonal and weekly variation. Daily consumption follows a clear yearly wave but shows no obvious overall drift (Figure 1a), pointing to negligible long-run changes but substantial seasonal variation. The first winter is noticeably higher and more variable than later ones. 
+Data coverage is nearly complete (Figure 1b): only 23 days fall below the 95% retention threshold and are treated as missing, and they form 8 short gaps spread across the record rather than clustering in one period or season (Section 2.3). Looking at the seasonal variation, our data is an intuitive U-shape (Figure 1c), higher electricity consumption in the winter months and lower electricity consumption in the summer months, with a relatively smooth shape- both harmonics seem to fit the overall pattern. Across the week, Saturday and Sunday have higher medians and wider interquartile ranges (IQRs) than weekdays (Figure 1d), but the weekdays also differ from one another, with Thursday lowest (Figure 1e). Therefore, we include day-of-week effects and recover the weekend effect as a contrast of their coefficients (Section 5).
 
-In the above panel, we look at daily household energy consumption throughout the whole time series, as well as its seasonal and weekly variation. As we can see in Figure 1a, daily household energy consumption has a clear yearly wave, but no real overall drift, pointing to negligible long-run changes but substantial seasonal variation. Looking at the seasonal variation, our data is an intuitive U-shape, higher electricity consumption in the winter months and lower electricity consumption in the summer months, with a relatively smooth shape- both harmonics seem to fit the overall pattern. Lastly, looking at the weekly variation, we can see that there are recurring differences across the seven days of the week, especially with Saturday and Sunday having slightly higher means and larger Interquartile ranges (IQRs) than weekdays. Overall, weekends are higher than weekdays (Figure 1d), but the weekdays also differ (Figure 1e). Therefore, we use day-of-week effects and recover the weekend as a contrast of the day-of-week coefficients (Section 5).
 
 ## 2.2 Response Variable 
 
@@ -405,7 +408,7 @@ ll <- sapply(lams, function(l) {
   fit <- arima(z, order = c(1, 0, 0), xreg = X)
   fit$loglik + (l - 1) * sum(log(y), na.rm = TRUE)   # Jacobian, so scales are comparable
 })
-lams[which.max(ll)]
+#lams[which.max(ll)]
 #plot(lams, ll, type = "b", xlab = "lambda", ylab = "profile log-likelihood")
 
 
@@ -413,7 +416,7 @@ lams[which.max(ll)]
 #Mark the absence-block days
 core <- rep(FALSE, nrow(d))
 for (b in blocks) core[d$date >= as.Date(b[1]) & d$date <= as.Date(b[2])] <- TRUE
-sum(core) # 57
+#sum(core) # 57
 # Copy y and blank out absence-block days
 y_ex <- d$kwh
 y_ex[core] <- NA
@@ -423,11 +426,9 @@ ll_ex <- sapply(lams, function(l) {
   fit <- arima(z, order = c(1, 0, 0), xreg = X)
   fit$loglik + (l - 1) * sum(log(y_ex), na.rm = TRUE)
 })
-lams[which.max(ll_ex)] # best lambda without the absence blocks
-
 ```
 
-```{r fig-boxcox, fig.width = 7, fig.height = 4, fig.cap = "Figure 2. Box–Cox profile log-likelihood under a regression with AR(1) errors (trend + two harmonics + day of week), with all observed days (black) and with absence-block days removed (red). Each curve is shifted so its maximum is 0; values of λ above the dashed line lie inside the 95% confidence interval."}
+```{r fig-boxcox, fig.width = 7, fig.height = 4, fig.cap = "Figure 2. Box–Cox profile log-likelihood under a regression with AR(1) errors (trend + two harmonics + day of week). Each curve is shifted so its maximum is 0; values of λ above the dashed line lie inside the 95% confidence interval."}
 # dir.create(here("R_figures"), showWarnings = FALSE)
 plot(lams, ll - max(ll), type = "b", ylim = range(c(ll - max(ll), ll_ex - max(ll_ex))),
      xlab = expression(lambda), ylab = "log-likelihood minus its maximum")
@@ -463,12 +464,9 @@ knitr::kable(round(cmp, 2),
                              "Normal errors have skew 0 and kurtosis 3."))
 # A Box–Cox profile likelihood allowing AR(1) errors favors λ ≈ 0.4 with or without the absence blocks. The square-root scale (λ = 0.5) gives nearly symmetric innovations (skew −0.07 vs 0.43), lighter tails, and more even monthly spread (SD ratio 1.96 vs 2.37), so we will model √kWh and report results in kWh through Monte Carlo transformation of posterior draws.
 ```
+Lower $\lambda$ evens out the monthly spread but pushes skew negative (Table 2): log over-corrects (skew −0.44, kurtosis 4.91). The square root balances the two, with nearly symmetric innovations (skew −0.07), kurtosis essentially tied for lowest (4.10 against 4.11 at the Box–Cox optimum), and an SD ratio below 2. It is also practically equivalent to the Box–Cox optimum: the profile likelihood peaks at $\hat\lambda \approx 0.4$ both with and without the absence-block days and is nearly flat between 0.3 and 0.5 (Figure 2), so the choice is not driven by the vacations. Therefore, we will perform a square root transformation of daily consumption, $z_t = \sqrt{Y_t}$ (in $\sqrt{\text{kWh}}$).
 
-Lower $\lambda$ evens out the monthly spread but pushes skew negative (Table 2): log over-corrects (skew −0.44, kurtosis 4.91). The square root balances the two, with nearly symmetric innovations (skew −0.07), the lowest kurtosis, and an SD ratio below 2, and is practically equivalent to the Box–Cox optimum ($\hat{\lambda} = 0.4$). Therefore, we will perform a square root transformation of our response variable Y ($\sqrt{Y}=\sqrt{\text{kWh}}$).
-
-We model each day’s error with two parts: a carried-over part and a new surprise, the innovation. Because kurtosis stays above 3 on every scale, the innovation follows a t-distribution, making it usually small while allowing occasional extremely high- or low-consumption days.
-
-The profile likelihood peaks at $\hat\lambda \approx 0.4$ both with and without the absence-block days (Figure 2), so the transformation is not driven by the vacations.
+We model each day’s error with two parts: a carried-over part from previous days and a new surprise, the innovation. Because kurtosis stays above 3 on every scale, the innovation follows a $t$ distribution, making it usually small while allowing occasional extremely high- or low-consumption days. Its degrees of freedom $\nu$ are estimated from the data (Section 3).
 
 ```{r fig3, echo = FALSE, fig.width = 12, fig.height = 7.5, out.width = "100%", fig.cap = "Figure 3. Residual checks on the square-root scale, using innovations from the regression with AR(1) errors (trend + two harmonics + day of week): (a) over time, with absence-block days in red; (b) against one-step fitted values; (c) normal Q-Q plot."}
 # dir.create(here("R_figures"), showWarnings = FALSE)
@@ -523,10 +521,14 @@ qqline(resid_sq / sd(resid_sq))
 
 # knitr::include_graphics(here("R_figures", "01d_residual_checks_sqrt.png"))
 ```
+The smoothed residuals stay close to zero, so the regression with AR(1) errors captures the main structure of the data (Figure 3a). There are still some small uncaptured wiggles, so the two harmonics may not capture the seasonal effects perfectly. Three of the four red absence blocks are in the summer when the household is likely away on vacation. 
 
-The smoothed residuals stay close to zero, so the regression with AR(1) errors captures the main structure of the data (Figure 3a). There are still some small uncaptured wiggles, so the two harmonics may not capture the seasonal effects perfectly. Three of the red absence blocks are in the summer, so these are likely when the household is away on vacation.
+Even after accounting for the AR(1) carry-over, the residuals within the absence blocks stay negative for many consecutive days, while elsewhere they show no long same-sign runs. This suggests that AR(1) captures the ordinary day-to-day dependence. The $t$ innovations are meant to absorb isolated extreme days, such as the short grey spikes and dips. 
+# Do we want to say we think t-innovations will capture sustained absence blocks?
+The sustained absence blocks are departures that neither AR(1) nor the $t$ innovations is designed to capture, and we will revisit them in sections 5 and 6.
 
-Even after accounting for the AR(1) carry-over, the residuals within the absence blocks stay negative for many consecutive days, while elsewhere the residuals show no long same-sign runs. This suggests AR(1) captures the ordinary day-to-day dependence. The t errors are intended to absorb isolated extreme days, such as the shorter grey dips. The sustained absence blocks are departures that neither AR(1) nor the t errors is designed to capture fully, and we will revisit them after model-fitting. On the square-root scale, the residuals show no clear funnel shape against the fitted values (Figure 3b), so heteroscedasticity is not a major concern. The smoothed curve bends slightly downward at both ends, where there are few points. At the low end this is partly a floor effect from absence days rather than a misfit of the mean. Seasonal coverage of the predictive intervals will be checked in Section 6 to confirm that any remaining heteroskedasticity is not a limitation of our model. Lastly, the normal Q-Q plot shows symmetric residuals (skew −0.07) with heavy tails at both ends, which is supported by Table 2 and is exactly what the t errors are aimed at.
+On the square-root scale, the residuals show no clear funnel shape against the fitted values (Figure 3b), so heteroscedasticity is not a major concern. The smoothed curve bends slightly downward at both ends, where there are few points. At the low end this is partly a floor effect from absence days rather than a misfit of the mean. Section 6 checks the seasonal coverage of the predictive intervals to confirm that any remaining heteroskedasticity is not a limitation of our model. Lastly, the normal Q-Q plot shows symmetric residuals (skew −0.07) with heavy tails at both ends, consistent with Table 2 and which is supported by Table 2 and is exactly what the $t$ innovations are aimed at.
+
 ```{r}
 # check where the missing days are
 d$observed <- as.logical(d$observed)
@@ -551,7 +553,9 @@ knitr::kable(miss_rates, align = "lrrr",
              caption = "Table 3. Share of days missing, overall and near absence blocks.") |>
   kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
 ```
-Missing days are not clustered around absence periods (Table 3: 1.2% of days in or within three days of an absence block are missing, versus 1.6% elsewhere), so they appear to come from recording outages rather than from the meter being switched off before a vacation. This is consistent with missingness at random, and the missing days make up only 1.6% of the calendar. Since MAR cannot be verified from the observed data, it remains an assumption.
+Missing days are not clustered around absence periods: only 1 of the 81 days in or within three days of an absence block is missing (1.2%), against 1.6% elsewhere (Table 3). They form 8 short gaps spread across the record (Figure 1b), and 9 of the 23 are full-day outages with no readings at all, so they appear to come from recording failures rather than from the meter being switched off before a vacation. This is consistent with missingness at random (MAR). Under MAR they can be left out of the likelihood rather than imputed (Section 2.4). Since MAR cannot be verified from the observed data, it remains an assumption.
+
+# !UPDATED WRITING UP TO HERE (just needs to be shortened)
 
 ## 2.3 Temporal Dependence
 
@@ -891,8 +895,6 @@ Fifth, for our degrees of freedom $\nu$, we choose an exponential prior with mea
 
 Together, these choices regularize the parameters without imposing a direction or size on the household's demand patterns in advance.
 
-# !UPDATED WRITING UP TO HERE (just needs to be shortened)
-
 # 4. Posterior Computation and Diagnostics
 
 $$
@@ -1128,7 +1130,6 @@ fit <- function(
   out <- list(
     beta = matrix(0, n_keep, k), sigma = numeric(n_keep), phi = matrix(0, n_keep, p),
     nu = numeric(n_keep), eps_last = matrix(0, n_keep, max(p, 1L)),
-    z_imputed = matrix(0, n_keep, 0),                                 # kept empty: no imputation
     loglik = matrix(0, n_keep, length(ll_idx)), ll_idx = ll_idx, names = xnames
   )
   warm_names <- c("sigma", "nu", if (p > 0) paste0("phi_", seq_len(p)), xnames)
@@ -1230,7 +1231,7 @@ fit_chains <- function(y, observed, t, dow, n_chains = 4, seed = 1, ...) {
     fit(y, observed, t, dow, seed = seed + 100 * ch, ...)
   })
   merged <- list()
-  for (key in c("beta", "sigma", "phi", "nu", "eps_last", "z_imputed", "loglik", "warmup", "acc_rate")) {
+  for (key in c("beta", "sigma", "phi", "nu", "eps_last", "loglik", "warmup", "acc_rate")) {
     merged[[key]] <- stack_along_chains(lapply(chains, `[[`, key))
   }
   for (key in c("eps_path", "wt_path", "path_pars")) {
@@ -2788,23 +2789,23 @@ knitr::kable(
 )
 ```
 
-# UPDATED CODE UP TO HERE (reflect our new decisions 11/13)
-
 # 7. Alternative Analysis, Comparison, and Bayesian Justification
 
 ```{r frequentist, include = FALSE}
-# ---- Section 7: the frequentist alternative (adapted from src/08_frequentist.R) ----
-# Fits the final model (sqrt kWh, trend, two harmonics, day of week, AR(1) errors with t innovations)
-# by maximum likelihood, then repeats the Section 5 summaries and the holdout forecasts with the MLE.
-# The likelihood conditions on the first observed day of each run, so the 23 missing days and the first
-# day after each gap contribute no term. Wald intervals use the observed information on the scale
-# (beta, log sigma, atanh phi, log(nu - 2)), which keeps them inside the parameter space. kWh quantities
-# are nonlinear in beta, so their intervals come from draws of the asymptotic normal distribution of the
-# MLE (Krinsky and Robb, 1986), passed through the same functions used on the posterior draws.
-# Results go to results/08_freq/summary.rds and are rebuilt when it is missing or out of date.
-# Uses from earlier chunks: d, S, here(), the model.R functions, TRAIN_END, ROLL_H, ROLL_STEP, MAX_LAG,
-#   NAV, RED and the make-results helpers (kwh_curve, dow_full, seas_matrix, q95).
-
+# ---- Section 7: the frequentist alternative ----
+# Fits the final model (sqrt kWh, trend, two harmonics, day of week, AR(1) errors with
+# t_nu(0, sigma) innovations) by maximum likelihood, then repeats the Section 5 summaries and the
+# holdout forecasts with the MLE. The likelihood is the same conditional likelihood as the Bayesian
+# analysis: a day enters only if it and the previous day are observed, so the 23 missing days and
+# the first day after each gap contribute no term (no imputation, no latent weights). The two
+# analyses therefore differ only in priors versus maximum likelihood.
+# Wald intervals use the observed information on the scale (beta, log sigma, atanh phi, log(nu - 2)),
+# which keeps them inside the parameter space. kWh quantities are nonlinear in beta, so their
+# intervals come from draws of the asymptotic normal distribution of the MLE (Krinsky and Robb,
+# 1986), passed through the same functions used on the posterior draws.
+# Results go to results/08_freq/summary.rds and are rebuilt when missing or out of date.
+# Uses from earlier chunks: d, S, here(), post_dir, the model-code functions, TRAIN_END, ROLL_H,
+# ROLL_STEP, MAX_LAG, NAV, RED and the make-results helpers (kwh_curve, dow_full, seas_matrix, q95).
 OUT8  <- here("results", "08_freq")
 N_SIM <- 20000L
 GREEN <- "#148f77"
@@ -3063,7 +3064,8 @@ make_freq <- function(d) {
 
 sum8 <- file.path(OUT8, "summary.rds")
 needs8 <- !file.exists(sum8) || is.null(readRDS(sum8)$agree) ||
-  readRDS(sum8)$holdout$plugin$n_origins != S$fc$n_origins
+  readRDS(sum8)$holdout$plugin$n_origins != S$fc$n_origins ||
+  file.mtime(file.path(post_dir, "summary.rds")) > file.mtime(sum8)   # Bayesian results were rebuilt
 if (needs8) make_freq(d)
 F7 <- readRDS(sum8)
 ```
@@ -3089,7 +3091,10 @@ v7 <- list(
   narrow3 = fmt_n(100 * (1 - w3(hp) / w3(hb))),
   c95_f = fmt_n(100 * mean(hp$c95)), c95_b = fmt_n(100 * mean(hb$c95)),
   mae_f = fmt_n(F7$holdout$plugin$single[["mae"]]), mae_b = fmt_n(S$fc$single[["mae"]]),
-  gap_closed = fmt_n(100 * (w3(he) - w3(hp)) / (w3(hb) - w3(hp)), 0)
+  gap_closed = {
+  gap <- w3(hb) - w3(hp)   # how much narrower the plug-in intervals are
+  if (gap > 0.1) fmt_n(100 * (w3(he) - w3(hp)) / gap, 0) else "n/a"
+  }
 )
 ```
 
@@ -3105,11 +3110,12 @@ v7 <- list(
 
 ```{r table14, echo = FALSE}
 knitr::kable(
-  F7$table, escape = FALSE, align = "lll",
+  F7$table, escape = FALSE, align = "lll", row.names = FALSE,
   caption = paste(
-    "Table 14. The final model fitted both ways. kWh quantities refer to the typical day, as in Table 9;",
+    "Table 14. The final model fitted both ways, with the same conditional likelihood (missing days left out).",
+    "kWh quantities refer to the typical day, as in Table 9;",
     "frequentist intervals for them simulate the asymptotic normal distribution of the MLE.",
-    "Forecast rows use fits through 30 November 2009."
+    sprintf("Forecast rows use fits through %s.", format(S$fc$train_end, "%d %B %Y"))
   )
 )
 ```
@@ -3137,7 +3143,7 @@ local({
          col = c(NAV, RED), pch = c(16, 17), lwd = 2, bty = "n", cex = 0.85)
   par(mar = c(4.5, 4.5, 2.5, 1))
   plot(bfc$byh$h, bfc$byh$w95, type = "l", lwd = 2, col = NAV,
-       ylim = c(0, 1.1 * max(bfc$byh$w95, hp$byh$w95)),
+       ylim = c(0, 1.1 * max(bfc$byh$w95, hp$byh$w95, he$byh$w95)),
        xlab = "forecast horizon (days ahead)", ylab = "mean width of 95% interval (kWh)",
        main = "(b) Predictive uncertainty by horizon", las = 1)
   lines(hp$byh$h, hp$byh$w95, lwd = 2, col = RED, lty = 2)
