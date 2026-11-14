@@ -555,7 +555,7 @@ knitr::kable(miss_rates, align = "lrrr",
 ```
 Missing days are not clustered around absence periods: only 1 of the 81 days in or within three days of an absence block is missing (1.2%), against 1.6% elsewhere (Table 3). They form 8 short gaps spread across the record (Figure 1b), and 9 of the 23 are full-day outages with no readings at all, so they appear to come from recording failures rather than from the meter being switched off before a vacation. This is consistent with missingness at random (MAR). Under MAR they can be left out of the likelihood rather than imputed (Section 2.4). Since MAR cannot be verified from the observed data, it remains an assumption.
 
-# !UPDATED WRITING UP TO HERE (just needs to be shortened)
+# LEFT HERE!UPDATED WRITING UP TO HERE (just needs to be shortened)
 
 ## 2.3 Temporal Dependence
 
@@ -683,7 +683,6 @@ ss <- resid_j2^2
 cap_dep <- sprintf(paste(
   "Table 4. Autocorrelation (ACF) and partial autocorrelation (PACF) of OLS residuals on the square-root scale",
   "(trend + two harmonics + day of week), at calendar lags. 'AR(1) prediction' is the lag-1 ACF raised to the lag.",
-  "Absence blocks are %.1f%% of observed days but %.1f%% of the residual sum of squares;",
   "the residual SD is %.2f with all days and %.2f with blocks removed (sqrt kWh), and the largest monthly SD",
   "is %.2f times the smallest with blocks removed."),
   100 * mean(block4), 100 * sum(ss[block4]) / sum(ss),
@@ -724,8 +723,7 @@ knitr::kable(round(tab_bic, 1), align = "rrrrr",
   kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
 
 ```
-
-After accounting for the intercept, trend, seasonality, and day-of-week effects, the residuals on the square-root scale remain correlated over time (Figure 4a, Table 4). The lag-1 autocorrelation is 0.47, but it decays much slower than the AR(1) prediction. The absence blocks explain part of this: they are 4.0% of observed days but 19.1% of the residual sum of squares, and removing them lowers the lag-1 autocorrelation to 0.35. The partial autocorrelations show that this extra memory lasts a few days rather than following a weekly cycle. Lags 2–4 still exceed the ±0.05 bounds. Further, by BIC, AR(4) errors fit best both with and without the absence blocks (Table5), so the AR order should be chosen by model comparison rather than fixed from the EDA. For now, we fit AR(1) errors.
+After accounting for the intercept, trend, seasonality, and day-of-week effects, the residuals on the square-root scale remain correlated over time (Figure 4a, Table 4). The lag-1 autocorrelation is 0.47, and the correlations decay much more slowly than the AR(1) prediction. The absence blocks explain part of this: they are 4.0% of observed days but 19.1% of the residual sum of squares, and removing them lowers the lag-1 autocorrelation to 0.35. The partial autocorrelations (Figure 4b) show that the remaining memory lasts a few days rather than following a weekly cycle. Lags 2–4 still exceed the $\pm 0.05$ bounds, and later lags are small, except for an isolated negative value at lag 8. By BIC, AR(4) errors fit best both with and without the blocks (Table 5), but the gap to AR(1) halves once the blocks are removed (31 versus 67). Part of the extra memory therefore comes from a few long, unusual episodes, which heavy-tailed innovations can absorb, while BIC here assumes normal errors. We use AR(1) errors in the main model as the simplest form of day-to-day carry-over, and compare AR(2) and AR(4) errors using WAIC and held-out forecasts in Section 6.
 
 # !Do we really need this part and figure 4c??? NO (keep figure 4 for now in case it is needed later)
 
@@ -2215,7 +2213,7 @@ local({
 # Then measures how far brms's posterior means are from ours, in units of our posterior SD.
 # The fit is saved to results/brms/main_runs.rds (first run ~5-10 min; later knits load it).
 # Uses from earlier chunks: d, here(), build_design, flatten, load_fit.
-library(brms)                                         # uses the cmdstanr backend installed earlier
+library(brms)                               # uses the cmdstanr backend installed earlier
 dir.create(here("results", "brms"), showWarnings = FALSE, recursive = TRUE)
 
 # data: the SAME 12 predictor columns and names as our sampler, observed days only
@@ -2262,13 +2260,27 @@ summary(fit_b)             # brms's own table: estimates, Rhat, Bulk_ESS, Tail_E
 prior_summary(fit_b)       # confirm the priors brms actually used (incl. the ar prior)
 file.exists(here("results", "brms", "main.rds"))   # TRUE = the fit was saved
 ```
-The posterior has no closed form, so we sample it with a Metropolis-within-Gibbs sampler written for this model, following Chib (1993) for the autoregressive errors and Geweke (1993) for the $t$ errors. Three augmentations make most full conditionals standard: each $t$ error is a normal error with a latent weight, $\eta_t \mid \lambda_t \sim N(0, \sigma^2/\lambda_t)$ with $\lambda_t \sim \text{Gamma}(\nu/2, \nu/2)$; the half-$t$ prior on $\sigma$ is an inverse-gamma mixture; and the 23 missing days are treated as unknowns. Each iteration draws $\beta$ from a multivariate normal, $\sigma^2$ from an inverse gamma, each $\lambda_t$ from a gamma, and each missing day from a normal. $\phi$ and $\nu$ have no standard full conditional, so they take random-walk Metropolis steps, rejecting non-stationary $\phi$. All parameters are updated together by one block random-walk Metropolis step on $(\beta, \log\sigma, \phi, \log(\nu-2))$, with a proposal covariance taken from the curvature of the log posterior at its mode; after tuning during burn-in, `r sprintf("%.0f", 100 * S$conv$acc)%` of proposals are accepted (Table 8).
 
-We ran four chains of 40,000 iterations from dispersed starting values, discarded the first 10,000, and kept every fifth draw, leaving 24,000 draws. The worst rank-normalized split-$\hat{R}$ is `r sprintf("%.3f", S$conv$worst[["rhat"]])` and the smallest effective sample size (ESS) is `r round(S$conv$worst[["ess"]])` (Vehtari et al., 2021), against targets of 1.01 and 400, so Monte Carlo error is at most about `r sprintf("%.0f", 100 * S$conv$mcse_max_frac)`% of a posterior standard deviation. In Figure 6, every chain reaches the same region within about 1,000 iterations, well inside the discarded burn-in, and the chains' densities overlap.
+The posterior has no closed form, so we sample it with a block random-walk Metropolis sampler written for this model (Chapter 10). All $d = 15$ parameters are updated together on unconstrained scales, $\theta = (\beta, \log\sigma, \phi, \log(\nu-2))$, with the Jacobian terms $\log\sigma$ and $\log(\nu-2)$ added to the log posterior; proposals for $\phi$ outside the stationary region are rejected. Proposals are drawn jointly as $\theta^* \sim N(\theta^{(k)}, s^2\Sigma)$, where $\Sigma$ is the inverse Hessian of the negative log posterior at its mode and $s$, initialised at $2.38/\sqrt{d}$, is tuned during burn-in and then fixed; because the proposal is symmetric, the acceptance ratio is the posterior ratio. After tuning, r sprintf("%.0f", 100 * S$conv$acc)% of proposals are accepted (Table 8), close to the optimum of about 23% for a joint update of this many parameters (Roberts, Gelman & Gilks, 1997); the 30–50% range often quoted applies to one-parameter updates. Missing days are left out of the likelihood (Section 2.4), so nothing is imputed.
+
+We ran four chains of 40,000 iterations from overdispersed starting values (twice the Laplace standard deviation from the mode), discarded the first 10,000 as burn-in, and kept every fifth draw, leaving 24,000 draws. 
+
+Table 8 reports the rank-normalized split-$\hat{R}$, a refinement of the Gelman–Rubin diagnostic (Gelman & Rubin, 1992), and the bulk and tail effective sample sizes (ESS) of Vehtari et al. (2021). The worst $\hat{R}$ is r sprintf("%.3f", S$conv$worst[["rhat"]]) and the smallest ESS is r round(min(S$conv$worst[c("ess", "ess_tail")])), against targets of 1.01 and 400, so the Monte Carlo standard error is below r sprintf("%.0f", 100 * S$conv$mcse_max_frac)% of every posterior standard deviation. 
+
+ESS is far below the number of draws because random-walk proposals produce correlated draws, as expected for this sampler. 
+
+The 30–50% acceptance range often quoted applies to one-parameter updates (optimum ≈ 44%); for a joint update of d = 15 parameters the optimal rate is about 23% (Roberts, Gelman & Gilks, 1997), the same result that gives the 2.38²/d proposal scale used in the course’s block sampler.
+
+In Figure 6, all four chains leave their starting values within a few hundred iterations and then overlap.
+-----------
+OLD
+
 
 On data simulated with known parameters, the 95% intervals covered `r sum(res_val$Covered)` of `r nrow(res_val)` true values (Table 7). The misses are the Thursday and Friday effects, adjacent days whose estimates are correlated through the AR(1) errors, and $\sigma$, whose interval ends just below its true value. Refitting the real data with brms (Bürkner, 2017), which uses Stan's No-U-Turn sampler instead of Gibbs, gives the same posterior: the posterior means of all 12 coefficients, $\sigma$, $\phi$ and $\nu$ lie within `r vb$gap` posterior standard deviations of ours (worst $\hat{R}$ `r vb$rhat`, `r vb$div` divergent transitions).
 
 # 5. Posterior Results and Interpretation
+
+We use Bayes factors for the two scientific yes/no questions (trend, second harmonic) and predictive criteria (WAIC and held-out log scores) for modelling choices such as the AR order because a Bayes factor for several extra AR coefficients would depend strongly on their essentially arbitrary prior and require a multivariate density estimate (Section 6).
 
 ```{r sec5-numbers, include = FALSE}
 # numbers quoted in Section 5, all taken from S (make-results chunk) and the main fit
@@ -2719,6 +2731,8 @@ stopifnot(isTRUE(all.equal(unname(S9$bf[, "main"]), c(bf_tr, bf_h2))))   # Secti
 **Bayes factors.(short version)** Because the coefficient priors are independent normals, the Bayes factors reported in Section 5 are Savage–Dickey density ratios: the prior density at zero divided by the posterior density at zero (Dickey, 1971; Verdinelli & Wasserman, 1995). Unlike posteriors, they depend on the prior width: doubling a coefficient's prior SD halves its prior density at zero, lowering $\log_{10}\text{BF}_{10}$ by about 0.3 per coefficient. Across the five priors, $\log_{10}\text{BF}_{10}$ ranges over `r v6$bf_tr_rng` for the trend and `r v6$bf_h2_rng` for the second harmonic (Table 11), so the direction and strength of the evidence do not depend on the prior.
 
 **Bayes factors. (long version)** On the $\log_{10}$ scale, positive values favour the larger model, and $\pm 1$ and $\pm 2$ mark strong and decisive evidence (Kass & Raftery, 1995). Under the reported prior, $\log_{10} \text{BF}_{10}$ is `r v6$bf_tr` for the linear trend (`r v6$bf_tr_rng` across the five priors), evidence `r v6$tr_dir` including a trend, and `r v6$bf_h2` for the second harmonic (`r v6$bf_h2_rng`), evidence `r v6$h2_dir` $J = 2$ (Table 11). Bayes factors depend on the prior width in a way posteriors do not: doubling a coefficient's prior SD halves its prior density at zero, lowering $\log_{10}\text{BF}_{10}$ by about 0.3 per coefficient. Halving and doubling the SDs therefore brackets this effect, and the direction of the evidence is the same at every width.
+
+**Predictive Criteria:**. We compare AR orders with predictive criteria rather than Bayes factors. In principle, AR(1) is nested in AR(4) through the restriction $\phi_2 = \phi_3 =\phi_4 =0$, so a Savage–Dickey ratio is available. In practice, it would require the posterior density of a three-dimensional parameter at a point that lies in the tail of the posterior whenever the data favor higher orders, where neither kernel estimates nor a normal approximation can be trusted. A Bayes factor is sensitive to the prior placed on the additional coefficients (Kass & Raftery, 1995). Our uniform prior on the stationary region is a convenience rather than genuine prior knowledge, so a Bayes factor would partly reflect that choice rather than the data. The AR order is also not a scientific hypothesis in this project but a modelling decision whose consequences appear in forecasts (Q5). We therefore judge it by out-of-sample predictive accuracy: the widely applicable information criterion (WAIC; Watanabe, 2010), which estimates expected log predictive density from the posterior draws and is far less sensitive to diffuse priors (Gelman, Hwang & Vehtari, 2014), together with log scores from rolling-origin forecasts of the held-out year. The forecasts guard against the optimism of WAIC’s pointwise terms, which in a time series are conditional on the preceding days (Bürkner, Gabry & Vehtari, 2020). We reserve Bayes factors for the two scientific yes/no questions, the linear trend and the second harmonic, where each restriction involves a single coefficient with an interpretable prior.
 
 **Modelling assumptions.** On the same `r v6$n_ll` likelihood terms, dropping the second harmonic lowers WAIC's elpd by `r v6$J` (SE `r v6$J_se`), and modelling raw kWh lowers it by `r v6$kwh` (SE `r v6$kwh_se`). AR(2) and AR(4) errors change it by `r v6$ar2` (SE `r v6$ar2_se`) and `r v6$ar4` (SE `r v6$ar4_se`), but on the held-out year their log score per forecast changes by `r v6$ar2_lpd` (SE `r v6$ar2_lpd_se`) and `r v6$ar4_lpd` (SE `r v6$ar4_lpd_se`) relative to AR(1), so we keep AR(1).
 
