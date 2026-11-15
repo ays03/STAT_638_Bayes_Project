@@ -13,22 +13,33 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 
 ```{r}
-# required packages: here, knitr, kableExtra
-library(here)
+# required packages: here, knitr, kableExtra, coda, brms, posterior, cmdstanr
+# (cmdstanr is not on CRAN; after installing it, run cmdstanr::install_cmdstan() once)
+library(here); library(knitr); library(kableExtra); library(coda); library(brms); library(cmdstanr)
 ```
 
 # 1. Scientific Question and Data
 
 Household electricity use varies over time because of household activity, weekly patterns, seasonal changes, and many other factors. Our objective is to characterize temporal patterns in daily household electricity consumption, and develop a Bayesian analysis to predict future electricity demand. The project breaks this into six questions:
 
-1.  How does daily household electricity consumption vary over the study period?
-2.  Is there evidence of a long-term increase or decrease in electricity consumption?
-3.  What annual seasonal pattern is present, and does the second harmonic provide an important improvement over the first-harmonic representation?
-4.  Are there systematic weekly patterns in electricity demand?
-5.  How accurate can future daily electricity consumption be predicted, and how does predictive uncertainty change with the forecasting horizon?
-6.  Are there periods of unusually high or low electricity consumption that are not adequately explained by the fitted model?
+```{r tab-questions, echo = FALSE}
+tab_q <- data.frame(
+  `#` = 1:6,
+  Question = c(
+    "How does daily household electricity consumption vary over the study period?",
+    "Is there evidence of a long-term increase or decrease in electricity consumption?",
+    "What annual seasonal pattern is present, and does the second harmonic provide an important improvement over the first-harmonic representation?",
+    "Are there systematic weekly patterns in electricity demand?",
+    "How accurately can future daily electricity consumption be predicted, and how does predictive uncertainty change with the forecasting horizon?",
+    "Are there periods of unusually high or low electricity consumption that are not adequately explained by the fitted model?"),
+  check.names = FALSE
+)
+knitr::kable(tab_q, escape = FALSE, align = "clll",
+             caption = "The six scientific questions.") |>
+  kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
+```
 
-The UCI *Individual Household Electric Power Consumption* dataset records 2,075,259 one-minute electric power consumption measurements from a single house (not a grid) in Sceaux, France between December 2006 and November 2010 (47 months). Each instance contains nine recorded variables: `Date`, `Time`, `Global_active_power`,`Global_reactive_power`, `Voltage`, `Global_intensity`,`Sub_metering_1`,`Sub_metering_2`,and `Sub_metering_3`. 
+The UCI *Individual Household Electric Power Consumption* dataset (Hébrail & Bérard, 2012) records 2,075,259 one-minute electric power consumption measurements from a single house (not a grid) in Sceaux, France between December 2006 and November 2010 (47 months). Each instance contains nine recorded variables: `Date`, `Time`, `Global_active_power`,`Global_reactive_power`, `Voltage`, `Global_intensity`,`Sub_metering_1`,`Sub_metering_2`,and `Sub_metering_3`. 
 
 The unit of analysis is a day. Each reading of `Global_active_power` is the average power (kW) over one minute, so daily energy use is $$\begin{aligned}
 Y_d &= \sum_{m=1}^{1440} E_m \\[6pt]
@@ -38,7 +49,7 @@ Y_d &= \sum_{m=1}^{1440} E_m \\[6pt]
 
 `Time` is used in data cleaning to verify every full day contains exactly 1440 unique minutes. `Date` is retained to construct the temporal predictors, a linear trend, annual sine/cosine harmonics (period 365), and day-of-week indicators. The other variables are not used in our analysis due to either being collinear with `Global_active_power`, irrelevant to active energy consumption, or out of scope for our objective. 
 
-About 1.25% of minutes are missing. We keep a day if at least 95% of its minutes were recorded, filling its few gaps with that day's average power, while other days stay on the calendar as missing. This gives 1,417 observed and 23 missing days (Figure 1b). Appendix A documents the cleaning.
+We have 1,417 observed and 23 missing days (Figure 1b). Appendix A documents the cleaning.
 
 ```{r aggregate, include = FALSE, eval = !file.exists(here::here("data", "daily.csv"))}
 # runs only when the daily.csv file is missing
@@ -140,9 +151,9 @@ main()
 
 ## 2.1 What the data show
 
-```{r fig1, echo = FALSE, fig.width = 14, fig.height = 10.5, out.width = "100%", fig.cap = "Figure 1. (a) Daily consumption; (b) daily data coverage with the 95% threshold; (c) annual shape by year with one- and two-harmonic fits; (d) weekdays vs weekends; (e) consumption by day of week."}
+```{r fig1, echo = FALSE, fig.width = 14, fig.height = 10.5, out.width = "100%", fig.cap = "Figure 1. Exploratory figures"}
 #dir.create(here("R_figures"), showWarnings = FALSE)
-# ---- Figure 1 (data overview), code taken from src/01d_indepth_eda_short_.R
+# ---- Figure 1 (data overview)
 ORIGIN <- as.Date("2006-12-17")   # t = 1
 MONTHS <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 DOW_NAMES <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -355,9 +366,7 @@ acf_tab <- t(sapply(acf_scales, acf_row))
 
 n_obs <- sum(!is.na(d$kwh))
 knitr::kable(round(acf_tab, 2),
-             caption = paste0("Table 1. Autocorrelation of OLS residuals (trend + two harmonics + ",
-                              "day of week) on each scale. Values beyond ±", round(1.96 / sqrt(n_obs), 2),
-                              " differ from zero at the 5% level."))
+             caption = paste0("Table 1. Autocorrelation of OLS residuals"))
 ```
 
 ```{r}
@@ -395,7 +404,7 @@ ll_ex <- sapply(lams, function(l) {
 })
 ```
 
-```{r fig-boxcox, fig.width = 7, fig.height = 4, fig.cap = "Figure 2. Box–Cox profile log-likelihood under a regression with AR(1) errors (trend + two harmonics + day of week). Each curve is shifted so its maximum is 0; values of λ above the dashed line lie inside the 95% confidence interval."}
+```{r fig-boxcox, fig.width = 7, fig.height = 4, fig.cap = "Figure 2. Box–Cox profile log-likelihood"}
 # dir.create(here("R_figures"), showWarnings = FALSE)
 plot(lams, ll - max(ll), type = "b", ylim = range(c(ll - max(ll), ll_ex - max(ll_ex))),
      xlab = expression(lambda), ylab = "log-likelihood minus its maximum")
@@ -426,13 +435,12 @@ cmp <- t(sapply(res, function(e) {
   c(Skew = skew(e), Kurtosis = kurt(e), "Max/min monthly SD" = max(s) / min(s))
 }))
 knitr::kable(round(cmp, 2),
-             caption = paste("Table 2. Innovations from the regression with AR(1) errors",
-                             "(trend + two harmonics + day of week) on each scale.",
-                             "Normal errors have skew 0 and kurtosis 3."))
+             caption = paste("Table 2. Innovations from the regression with AR(1) errors"))
+
 # A Box–Cox profile likelihood allowing AR(1) errors favors λ ≈ 0.4 with or without the absence blocks. The square-root scale (λ = 0.5) gives nearly symmetric innovations (skew −0.07 vs 0.43), lighter tails, and more even monthly spread (SD ratio 1.96 vs 2.37), so we will model √kWh and report results in kWh through Monte Carlo transformation of posterior draws.
 ```
 
-```{r fig3, echo = FALSE, fig.width = 12, fig.height = 7.5, out.width = "100%", fig.cap = "Figure 3. Residual checks on the square-root scale, using innovations from the regression with AR(1) errors (trend + two harmonics + day of week): (a) over time, with absence-block days in red; (b) against one-step fitted values; (c) normal Q-Q plot."}
+```{r fig3, echo = FALSE, fig.width = 12, fig.height = 7.5, out.width = "100%", fig.cap = "Figure 3. Diagnostic Plots"}
 # dir.create(here("R_figures"), showWarnings = FALSE)
 # ---- Figure 3 (residual checks), adapted from [FIGURE 2] in src/01d_indepth_eda_short_.R ----
 # Uses from earlier chunks: d (full calendar), X (design matrix), core (absence-block days), here()
@@ -511,7 +519,7 @@ knitr::kable(miss_rates, align = "lrrr",
   kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
 ```
 
-```{r fig4, echo = FALSE, fig.width = 15, fig.height = 4, out.width = "100%", fig.cap = "Figure 4. (a) Residual ACF and (b) residual PACF on the square-root scale, for all observed days (bars) and with absence blocks removed (red); (c) residual SD by month."}
+```{r fig4, echo = FALSE, fig.width = 15, fig.height = 4, out.width = "100%", fig.cap = "Figure 4. Autocorrelation plots"}
 
 # dir.create(here("R_figures"), showWarnings = FALSE)
 # ---- Figure 4 (residual dependence and spread), adapted from [FIGURE 3] in src/01d_indepth_eda_short_.R ----
@@ -591,7 +599,7 @@ phi  <- rho[1]
 lags <- 1:21
 ci   <- 1.96 / sqrt(n)
 # png(here("R_figures", "01d_residual_sqrt.png"), width = 15, height = 4, units = "in", res = 140)
-par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
 bp <- barplot(rho, names.arg = lags, col = "#1f4e79", xlab = "lag (days)", ylab = "residual autocorrelation",
               main = "(a) Residual ACF", ylim = range(c(rho, rho_ex, phi^lags, ci, -ci)))
 lines(bp, rho_ex, type = "b", pch = 16, cex = 0.5, col = "#b03a2e")
@@ -607,11 +615,11 @@ abline(h = c(ci, -ci), col = "gray", lty = 3)
 legend("topright", legend = c("all observed days", "absence blocks removed"),
        col = c("#1f4e79", "#b03a2e"), lty = c(NA, 1), pch = c(15, 16), cex = 0.7, bty = "n")
 
-bp <- barplot(sd_m, names.arg = substr(MONTHS, 1, 1), col = "#1f4e79", ylab = "residual SD (sqrt kWh)",
-              main = "(c) Residual SD by month", ylim = c(0, 1.05 * max(c(sd_m, sd_m_ex), na.rm = TRUE)))
-points(bp, sd_m_ex, pch = 16, col = "#b03a2e")
-legend("topright", legend = c("all observed days", "absence blocks removed"),
-       col = c("#1f4e79", "#b03a2e"), pch = c(15, 16), cex = 0.75, bty = "n")
+# bp <- barplot(sd_m, names.arg = substr(MONTHS, 1, 1), col = "#1f4e79", ylab = "residual SD (sqrt kWh)",
+#               main = "(c) Residual SD by month", ylim = c(0, 1.05 * max(c(sd_m, sd_m_ex), na.rm = TRUE)))
+# points(bp, sd_m_ex, pch = 16, col = "#b03a2e")
+# legend("topright", legend = c("all observed days", "absence blocks removed"),
+#        col = c("#1f4e79", "#b03a2e"), pch = c(15, 16), cex = 0.75, bty = "n")
 # dev.off()
 
 # knitr::include_graphics(here("R_figures", "01d_residual_sqrt.png"))
@@ -633,10 +641,7 @@ tab_dep[-1] <- round(tab_dep[-1], 2)
 
 ss <- resid_j2^2
 cap_dep <- sprintf(paste(
-  "Table 4. Autocorrelation (ACF) and partial autocorrelation (PACF) of OLS residuals on the square-root scale",
-  "(trend + two harmonics + day of week), at calendar lags. 'AR(1) prediction' is the lag-1 ACF raised to the lag.",
-  "The residual SD is %.2f with all days and %.2f with blocks removed (sqrt kWh), and the largest monthly SD",
-  "is %.2f times the smallest with blocks removed."),
+  "Table 4. Autocorrelation (ACF) and partial autocorrelation (PACF) of OLS residuals"),
   sd(resid_j2), sd(resid_j2[!block4]),
   max(sd_m_ex, na.rm = TRUE) / min(sd_m_ex, na.rm = TRUE),
   1.96 / sqrt(n))
@@ -669,13 +674,12 @@ tab_bic <- rbind("All observed days"      = bic - min(bic),
                  "Absence blocks removed" = bic_ex - min(bic_ex))
 colnames(tab_bic) <- paste0("AR(", 1:5, ")")   # bic_ar fits AR orders 1 to 5
 knitr::kable(round(tab_bic, 1), align = "rrrrr",
-             caption = paste("Table 5. BIC of the regression with AR(p) errors, relative to the best order",
-                             "in each row (0 = best; larger is worse).")) |>
+             caption = paste("Table 5. BIC of the regression with AR(p) errors.")) |>
   kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
 
 ```
 
-There's no obvious long-term drift, but we can see seasonality and day-of-week effects (Figure 1). A Box–Cox likelihood with AR(1) errors peaks near $\lambda = 0.4$, which suggests a square-root transformation due to being close to $\lambda = 0.5$ (Figure 2). With the transformation, heteroskedasticity is not a major concern, and we have a heavy-tailed but symmetrical distribution (Figure 3). The 23 missing days don't cluster near the absence blocks (Table 3) and are not correlated with high/low consumption (Figure 1), so we treat them as missing at random (MAR) and drop them from our analysis. After removing trend, seasonality, and day-of-week effects, the square-root residuals remain autocorrelated (lag-1 autocorrelation 0.47, falling to 0.35 without the absence blocks, which are 4.0% of days but 19.1% of the residual sum of squares), with memory lasting a few days rather than following a weekly cycle (Figure 4, Table 4). BIC favours AR(4) errors (Table 5), but its advantage halves without the blocks and assumes normal errors, whereas our heavy-tailed innovations can absorb these episodes, so we use AR(1) errors as the simplest form of carry-over and compare AR(2) and AR(4) in Section 6. 
+There's no obvious long-term drift, but we can see seasonality and day-of-week effects (Figure 1). We do a square-root transformation of the response variable, as suggested by a Box-Cox likelihood with AR(1) errors (Figure 2). The 23 missing days are dropped due to being missing at random (MAR) and not correlated with anything in our data (Figure 1, Table 3). We use AR(1) errors due to the residuals being autocorrelated and its simplicity-- we check alternatives in Section 6 (Figure 4, Table 4). More information is contained in Appendix B.
 
 Our key assumptions are: (1) On the square-root scale, the mean is a linear trend, two annual harmonics (alternatives checked in Section 6), and additive day-of-week effects that are the same throughout the year (2) Errors follow a stationary AR(1) process (alternatives checked in Section 6) (3) Innovations are independent $t_\nu(0,\sigma)$ with a single scale, so occasional extreme days such as absences are down-weighted (4) Missing days are MAR
  
@@ -693,7 +697,7 @@ z_{t} &= x_{t}^{T}\beta+\varepsilon_{t}\\
 
 Here $\beta_0$ is the level at the middle of the record ($\bar t$) and $\beta_1$ the change per year (Q2); $a_j, b_j$ shape the annual cycle (Q3); and $\delta_k$ is day $k$ minus Monday (Q4). $\phi_l$ is the share of a past day's deviation carried into today, $\sigma$ the scale of the daily shock/innovation $\eta_t$, and $\nu$ its tail weight. We use $J = 2$ and AR(1) errors, comparing $J = 1$ and AR(2)–AR(4) in Section 6. The $t$ innovations stop extreme days dominating. The posterior predictive distribution answers Q5, and posterior predictive checks answer Q6.
 
-With $O$ the set of observed days, a day enters the likelihood only if it and its previous $p$ days are in $O$,
+With $O$ the set of observed days, a day enters the likelihood only if it and its previous $p$ days are in $O$ (Box et al., 2015),
 $$
 \mathcal{I}_p = \{\, t : t, t-1, \dots, t-p \in O \,\},
 $$
@@ -742,7 +746,7 @@ knitr::kable(tab6, escape = FALSE,
              caption = "Table 6. Priors for the square-root-scale model.")
 ```
 
-```{r fig-priors, fig.width = 11, fig.height = 8.2, fig.cap = "Figure 5. Prior densities on the square-root scale: (a) regression coefficients; (b) the scale σ of the t innovations η_t; (c) the AR(1) coefficient; (d) the degrees of freedom ν."}
+```{r fig-priors, fig.width = 11, fig.height = 8.2, fig.cap = "Figure 5. Priors"}
 # Prior densities for the sqrt(kWh) model. Values match the model-code chunk (Section 4):
 #   intercept N(0, 20^2), other coefficients N(0, 5^2), sigma ~ half-t(3, scale 2),
 #   phi uniform on the stationary region, nu - 2 ~ Exponential(mean 10).
@@ -817,13 +821,13 @@ text(32, 0.04, "nearly\nGaussian", col = col_nav, cex = 0.75)
 
 There are no published estimates of these model parameters for a comparable household, so we utilized weakly informative priors to allow our data to be the primary thing informing our posterior distributions (Table 6, Figure 5).
 
-First, the intercept $\beta_0$ has a normal prior, which is continuous, symmetric, and allows any real value. Its standard deviation of 20 $\sqrt{\text{kWh}}$ places 95% of the prior within ±40 $\sqrt{\text{kWh}}$ (up to 40² = 1,600 kWh/day), far above the current average for a Sceaux household (about 9.6 kWh per day; GridLabs, n.d.), this household’s highest observed day (about 80 kWh), and even the physical maximum of a residential connection (864 kWh/day; EDF, Tarif Bleu), so the prior does not constrain the intercept. Our mean is 0 not because we believe the baseline level is zero, but because with that standard deviation, it is nonrestrictive (Figure 5a).  
+First, the intercept $\beta_0$ has a normal prior, which is continuous, symmetric, and allows any real value. Its standard deviation (SD) of 20 $\sqrt{\text{kWh}}$ places 95% of the prior far above this household’s highest observed day (~80 kWh). Our mean is 0 because with that standard deviation, it is nonrestrictive (Figure 5a). See Appendix C for more information. 
 
-Second, our other regression coefficients $\beta_1, a_j, b_j, \delta_k$ also have normal priors centered at 0 for similar reasons: it is continuous, symmetric, lets the data choose the direction of each effect, and makes extremely large effects less plausible. Their standard deviation of 5 √kWh is about twice the largest contrast in the data (Figure 5a). The trend prior $\beta_1 \sim N(0, 5^2)$ allows yearly changes of up to about ±100 kWh/day (95%) for a typical 25 kWh/day, so it is weak about the size of any trend. Because of its normal distribution though, this width makes it lean toward “no trend.”
+Second, our other regression coefficients $\beta_1, a_j, b_j, \delta_k$ have normal priors centered at 0. Their SD of 5 $\sqrt{\text{kWh}}$ is about twice the largest contrast in the data (Figure 5a). The trend prior $\beta_1 \sim N(0, 5^2)$ allows high yearly changes, so it is weak about the size of any trend. Because of its normal distribution, this width makes it lean toward “no trend.”
 
-Third, the innovation scale $\sigma$ has a half-$t$ prior with 3 degrees of freedom and scale 2 √kWh (Gelman, 2006), which keeps $\sigma$ positive (due to it being a scale parameter, we need this restriction), and allows scales well above the standard deviation of daily √kWh, 1.01 (Figure 5b). 
+Third, the innovation scale $\sigma$ has a half-$t$ prior with 3 degrees of freedom and scale 2 $\sqrt{\text{kWh}}$ (Gelman, 2006), which keeps $\sigma$ positive and allows scales above the SD of daily $\sqrt{\text{kWh}}$, 1.01 (Figure 5b). 
 
-Fourth, the autoregressive coefficients have a uniform prior on the stationary region: $(-1, 1)$ for AR(1), and the corresponding stationary region for the higher-order models compared in Section 5. Within that region every value is equally likely, and shocks fade over time, so long-horizon forecasts stay bounded (Figure 5c).
+Fourth, the autoregressive coefficients have a uniform prior on the stationary region: $(-1, 1)$ for AR(1), and the corresponding stationary region for the higher-order models compared in Section 6. Within that region every value is equally likely, and shocks fade over time, so long-horizon forecasts stay bounded (Figure 5c).
 
 Fifth, an exponential prior with mean 10 on $\nu - 2$ keeps $\nu$ above 2, so the innovation variance is finite. It puts substantial weight on small values (heavy tails) and less on very large ones (nearly Gaussian tails), so the data decide how heavy the tails are (Figure 5d). 
 
@@ -2076,7 +2080,7 @@ val_show[, c("Truth", "Posterior mean", "2.5%", "97.5%", "R-hat")] <-
 val_show$ESS <- round(val_show$ESS)
 val_show$Covered <- ifelse(val_show$Covered, "yes", "no")
 knitr::kable(val_show, align = "lrrrrcrr", row.names = FALSE,
-             caption = sprintf(paste("Table 7. Sampler validation on a series simulated from the model","(square-root scale, AR(1) errors, $t$ innovations), with the same 23 days","missing and left out of the likelihood. Block random-walk Metropolis,","%.0f%% of proposals accepted after burn-in. %d of %d 95%% credible","intervals cover the true value."),100 * attr(res_val, "acc_rate"), sum(res_val$Covered), nrow(res_val)))
+             caption = sprintf(paste("Table 7. Sampler validation on a series simulated from the model"),100 * attr(res_val, "acc_rate"), sum(res_val$Covered), nrow(res_val)))
 ```
 
 
@@ -2087,19 +2091,13 @@ names(tab_conv)[names(tab_conv) == "Worst R-hat"] <- "Worst $\\hat{R}$"
 knitr::kable(
   tab_conv, escape = FALSE, align = "llcrrr", row.names = FALSE,
   caption = paste(
-    sprintf("Table 8. Sampler and convergence diagnostics for the final model (%d chains, %s kept draws).",
-            S$conv$n_chain, format(S$conv$n_total, big.mark = ",")),
-    "All parameters are updated together in one block random-walk Metropolis step on",
-    "$(\\beta, \\log\\sigma, \\phi, \\log(\\nu - 2))$, so they share one acceptance rate;",
-    "missing days are left out of the likelihood.",
-    "$\\hat{R}$ is the larger of the bulk and folded rank-normalized split-$\\hat{R}$.",
-    "Targets: $\\hat{R} < 1.01$ and ESS above 400."
+    sprintf("Table 8. Sampler and convergence diagnostics for the final model")
   )
 )
 ```
 
 
-```{r fig6a, echo = FALSE, fig.width = 12, fig.height = 8, out.width = "100%", fig.cap = "Figure 6a. Trace plots for the trend, innovation scale, autoregressive coefficient, and degrees of freedom from the block random-walk Metropolis sampler, including the discarded burn-in (shaded), with each chain's density of kept draws on the right."}
+```{r fig6a, echo = FALSE, fig.width = 12, fig.height = 8, out.width = "100%", fig.cap = "Figure 6. Trace plots for the trend, innovation scale, autoregressive coefficient, and degrees of freedom"}
 local({
   p <- S$fig6
   labs <- list(trend_per_year = expression(beta[1] ~ "(trend)"), sigma = expression(sigma),
@@ -2128,7 +2126,7 @@ local({
 })
 ```
 
-```{r fig-acf, fig.width = 10, fig.height = 2.6, fig.cap = "Figure 6b. Autocorrelation of the kept draws (chain 1, main model). One lag = 5 iterations."}
+```{r fig-acf, fig.width = 10, fig.height = 2.6, fig.cap = "Figure 7. Autocorrelation of the kept draws."}
 library(coda)
 pm   <- param_mats(load_fit("main"))
 keys <- c(sigma = "sigma", phi = "phi_1", nu = "nu")   # panel name = draw name
@@ -2192,17 +2190,9 @@ vb <- list(gap  = sprintf("%.2f", max(gap)),
 
 The posterior has no closed-form solution, so we approximate it using a block random-walk Metropolis sampler developed for this model (see the folded Code block above). 
 
-We first obtain initial parameter estimates using BFGS optimization, a numerical optimization algorithm that iteratively minimizes the negative log posterior to locate its mode, so we're finding the most likely parameter estimates under the posterior distribution. 
-
-All $d = 15$ parameters are proposed together on the scale $\theta = (\beta, \log\sigma, \phi, \log(\nu-2))$- we log transform $\sigma$ and $\nu-2$ to keep the proposed values positive (for the same reasons we detailed in the priors), and to account for the variable transformations we add Jacobian terms to the log posterior.
-
-Then, instead of doing a basic random-walk proposal, we construct a multivariate normal random-walk proposal that accounts for differences in parameter uncertainty and correlations between parameters. We do this by calculating the Hessian of the negative log posterior at this mode and use its inverse to approximate the posterior covariance matrix. This works because the Hessian describes the curvature of the posterior, and a multivariate normal distribution has curvature equal to its inverse covariance matrix. 
-
-At each iteration, a new vector containing all model parameters is proposed and accepted or rejected based on its joint posterior density (and proposals with $|\phi| \ge 1$ are rejected outright). The proposal scale is tuned during burn-in toward an acceptance rate of approximately 23.4% (the optimum for a joint update of this many parameters according to (Roberts, Gelman & Gilks, 1997)) and then held fixed. 
-
-Four chains of 40,000 iterations started from overdispersed values (twice the Laplace SD from the mode). We dropped the first 10,000 as burn-in and kept every fifth draw, leaving 24,000 iterations. After tuning, 23% of proposals were accepted as suggested by (Roberts, Gelman & Gilks, 1997) for a joint update of 15 parameters (Table 8). The worst rank-normalized split-$\hat{R}$ (Gelman & Rubin, 1992; Vehtari et al., 2021) is 1.002, and the smallest bulk or tail effective sample size is `r round(min(S$conv$worst[c("ess", "ess_tail")]))`, against targets of 1.01 and 400, so the ESS is well below the number of draws as expected for random-walk proposals but far above what is needed. We use the stricter threshold of 1.01 recommended by Vehtari et al. (2021) rather than the traditional 1.1, but our worst $\hat{R}$ satisfies both. Further, Monte Carlo standard error is at most about `r sprintf("%.0f", 100 * S$conv$mcse_max_frac)`% of a posterior SD, which is small enough that rerunning the sampler would not change any reported digit. The four chains overlap from the start of burn-in and their densities agree (Figure 6), and autocorrelations fall to near zero within about 15–20 kept draws (Figure 6b). All these convergence diagnostics show that there are no convergence issues.
-
-Two more checks support the sampler. On a series simulated with known parameters and the same 23 missing days, the 95% intervals covered `r sum(res_val$Covered)` of `r nrow(res_val)` true values (Table 7), as expected; the miss was `r paste(res_val$Parameter[!res_val$Covered], collapse = ", ")`. Refitting with brms (Bürkner, 2017), which uses Stan's No-U-Turn sampler, puts every posterior mean within `r vb$gap` posterior SDs of ours (worst $\hat{R}$ `r vb$rhat`, `r vb$div` divergent transitions).
+We first obtain initial parameter estimates using BFGS optimization, which finds the most likely parameter estimates under the posterior distribution. All $d = 15$ parameters $\theta = (\beta, \log\sigma, \phi, \log(\nu-2))$ are proposed at one time (we log transform $\sigma$ and $\nu-2$ to keep the proposed values positive), and to account for the variable transformations we add Jacobian terms to the log posterior. We then construct a multivariate normal random-walk proposal that accounts for parameter correlations through an approximation of the posterior covariance matrix. At each iteration, a new parameter vector is proposed and accepted/rejected based on its joint posterior density (and proposals with $|\phi| \ge 1$ are rejected outright). The proposal scale is tuned during burn-in toward an acceptance rate of approximately 23.4% and then held fixed.
+Four chains of 40,000 iterations started from overdispersed values. We dropped the first 10,000 as burn-in and kept every fifth draw, leaving 24,000. The worst rank-normalized split-$\hat{R}$ (Gelman & Rubin, 1992; Vehtari et al., 2021) is 1.002, and the smallest bulk or tail effective sample size is `r round(min(S$conv$worst[c("ess", "ess_tail")]))`, against targets of 1.01 and 400, so the ESS is well above what is needed. Further, Monte Carlo standard error is at most about `r sprintf("%.0f", 100 * S$conv$mcse_max_frac)`% of a posterior SD, which is very small. The four chains overlap from the start of burn-in and their densities agree (Figure 6), and autocorrelations fall to near zero within about 15–20 kept draws (Figure 6b). All these convergence diagnostics show that there are no convergence issues.
+Two more checks support the sampler. On a series simulated with known parameters and the same 23 missing days, the 95% intervals covered `r sum(res_val$Covered)` of `r nrow(res_val)` true values (Table 7), as expected. Refitting with brms (Bürkner, 2017) puts every posterior mean within `r vb$gap` posterior SDs of ours (worst $\hat{R}$ `r vb$rhat`, `r vb$div` divergent transitions). More information on this section is in Appendix D.
 
 # 5. Posterior Results and Interpretation
 
@@ -2255,7 +2245,7 @@ v <- list(
 )
 ```
 
-We report results in kWh through the *typical day*, $(x_t^\top\beta)^2$, computed for each draw; with symmetric errors on the square-root scale, it is the median daily use (Table 9).
+We report results in kWh through the *typical day*, $(x_t^\top\beta)^2$, computed for each draw. With symmetric errors on the square-root scale, it is the median daily use (Table 9).
 
 ```{r table9, echo = FALSE}
 pmat <- param_mats(fm)   # one chains x draws matrix per parameter: 12 betas, sigma, phi_1, nu
@@ -2280,20 +2270,18 @@ stopifnot(nrow(post15) == 15)
 knitr::kable(
   post15, escape = FALSE, align = "lrrr", row.names = FALSE,
   caption = paste(
-    "Table 9. Posterior means, standard deviations and 95% credible intervals (CrI) for all 15 parameters",
-    "of the main model, from 24,000 draws. Regression coefficients and $\\sigma$ are on the square-root scale",
-    "($\\sqrt{\\text{kWh}}$); day-of-week effects are differences from Monday."
+    "Table 9. Posterior means, standard deviations and 95% credible intervals (CrI)."
   )
 )
 ```
 
-**Variation (Q1):** We see evidence of seasonality, with our sin(2pit/365), cos(2pit/365), sin(4pit/365), cos(4pit/365), all having 95% CrI that exclude zero. The same is true for day-of-week effects, where every day of the week besides Thursday and Friday have credible intervals that exclude zero. Lastly, the estimate for degrees of freedom v is 8.349 with 95% CrI [5.739, 12.452], which suggests heavy tails in electricity consumption (i.e., there are more extreme values than we would expect). 
+**Variation (Q1):** We see evidence of seasonality, with our sin(2pit/365), cos(2pit/365), sin(4pit/365), cos(4pit/365), all having 95% CrI that exclude zero. The same is true for day-of-week effects, where every day of the week besides Thursday/Friday have CrI that exclude zero. Lastly, the estimate for df $\nu$ has 95% CrI [5.739, 12.452], which suggests heavy tails in electricity consumption. 
 
 **Trend (Q2):** The estimated trend is −0.019, but its credible interval includes zero. Thus, there is not enough evidence to say that there is a long-term increase or decrease. 
 
-**Seasonality (Q3):** As detailed earlier, we see evidence of seasonality effects, with sin(2pit/365), cos(2pit/365), sin(4pit/365), cos(4pit/365) all excluding zero. Sin(4pit/365) and cos(4pit/365) having intervals excluding zero suggest a notable effect of flattening the estimated winter consumption and deepening the estimated summer consumption, but on its own this is not enough to decide whether it is worth it to add the variable. In Section 6, we use a sensitivity analysis to answer this question. 
+**Seasonality (Q3):** We see evidence of seasonality effects, with sin(2pit/365), cos(2pit/365), sin(4pit/365), cos(4pit/365) all excluding zero. Sin(4pit/365) and cos(4pit/365) having intervals excluding zero suggest a notable effect of flattening the estimated winter consumption and deepening the estimated summer consumption, but on its own this is not enough to decide whether it is worth it to add the variable. In Section 6, we use a sensitivity analysis to answer this question. 
 
-```{r fig7, echo = FALSE, fig.width = 12, fig.height = 4.4, out.width = "100%", fig.cap = "Figure 7. (a) Posterior typical-day consumption over the year with 95% credible bands, for the final two-harmonic model and the one-harmonic model; dots are observed monthly medians. (b) Day-of-week effects relative to the weekly mean, with 95% credible intervals."}
+```{r fig8, echo = FALSE, fig.width = 12, fig.height = 4.4, out.width = "100%", fig.cap = "Figure 8. Posterior typical-day consumption over the year with 95% credible bands and day-of-week effects relative to the weekly mean."}
 local({
   p <- S$fig7
   layout(matrix(1:2, nrow = 1), widths = c(1.7, 1))
@@ -2317,9 +2305,9 @@ local({
 })
 ```
 
-**Weekly Pattern (Q4):** Again, as detailed earlier, we see evidence of day of week effects, with Thursday and Friday being indistinguishable from Monday, but the rest of the days having meaningfully higher consumption. The relatively high estimates and intervals (Table 9) of Saturday/Sunday suggest a general difference between weekday and weekend (Figure 7b).
+**Weekly Pattern (Q4):** We see evidence of day of week effects, with Thursday and Friday being indistinguishable from Monday, but the rest of the days having meaningfully higher consumption. The relatively high estimates and intervals (Table 9) of Saturday/Sunday suggest a general difference between weekday and weekend (Figure 8b).
 
-```{r fig8, echo = FALSE, fig.width = 12, fig.height = 7.5, out.width = "100%", fig.cap = paste0("Figure 8. Forecasting the held-out final year from a fit through ", format(S$fc$train_end, "%d %B %Y"), ". (a) Twelve-month predictive median with 50% and 95% intervals against actual consumption; (b) mean 95% interval width and (c) empirical coverage by horizon, over ", S$fc$n_origins, " rolling forecast origins.")}
+```{r fig9, echo = FALSE, fig.width = 12, fig.height = 7.5, out.width = "100%", fig.cap = paste0("Figure 9. Forecasting the held-out final year")}
 local({
   p <- S$fig8; s1 <- p$s1; tr <- p$tr; byh <- p$byh
   layout(matrix(c(1, 1, 2, 3), nrow = 2, byrow = TRUE))
@@ -2340,18 +2328,18 @@ local({
   plot(byh$h, byh$w95, type = "b", pch = 16, cex = 0.5, col = NAV, ylim = c(0, max(byh$w95) * 1.08),
        xlab = "forecast horizon (days ahead)", ylab = "mean width of 95% interval (kWh)",
        main = "(b) Predictive uncertainty by horizon", las = 1)
-  plot(byh$h, 100 * byh$c95, type = "b", pch = 16, cex = 0.5, col = NAV, ylim = c(30, 100),
-       xlab = "forecast horizon (days ahead)", ylab = "empirical coverage (%)",
-       main = "(c) Calibration by horizon", las = 1)
-  lines(byh$h, 100 * byh$c50, type = "b", pch = 1, cex = 0.5, col = RED)
-  abline(h = c(95, 50), lty = 2, col = c(NAV, RED))
-  legend("right", legend = c("95% interval", "50% interval"), col = c(NAV, RED), pch = c(16, 1), bty = "n", cex = 0.8)
+  # plot(byh$h, 100 * byh$c95, type = "b", pch = 16, cex = 0.5, col = NAV, ylim = c(30, 100),
+  #      xlab = "forecast horizon (days ahead)", ylab = "empirical coverage (%)",
+  #      main = "(c) Calibration by horizon", las = 1)
+  # lines(byh$h, 100 * byh$c50, type = "b", pch = 1, cex = 0.5, col = RED)
+  # abline(h = c(95, 50), lty = 2, col = c(NAV, RED))
+  # legend("right", legend = c("95% interval", "50% interval"), col = c(NAV, RED), pch = c(16, 1), bty = "n", cex = 0.8)
 })
 ```
 
-**Forecasting (Q5).** Refitting the model through November 2009, we forecast the final year (Figure 8). The 95% predictive interval is `r v$w1` kWh wide one day ahead and `r v$w3` kWh from day three on, a widening close to the factor $1/\sqrt{1-\phi^2} =$ `r v$sd_ratio` implied by $\phi =$ `r v$phi`. Yesterday's use matters for only a few days. The intervals are `r v$cal` (`r v$c95`% and `r v$c50`% coverage at the 95% and 50% levels) but wide: the 12-month forecast misses by `r v$mae` kWh per day on average, about `r v$mae_pct`% of typical use.
+**Forecasting (Q5).** Refitting the model through November 2009, we forecast the final year (Figure 9). The 95% predictive interval is `r v$w1` kWh wide one day ahead and `r v$w3` kWh from day three on, a widening close to the factor $1/\sqrt{1-\phi^2} =$ `r v$sd_ratio` implied by $\phi =$ `r v$phi`. The intervals are `r v$cal` (`r v$c95`% and `r v$c50`% coverage at the 95% and 50% levels) but wide. The width of the 95% predictive interval grows from about 28 kWh one day ahead to about 31 kWh by day three and then stays roughly constant (Figure 9b).
 
-```{r fig9, echo = FALSE, fig.width = 12, fig.height = 4.4, out.width = "100%", fig.cap = "Figure 9. Observed consumption against the model's typical day. Shading marks 14-day periods whose mean falls outside the central 98% of its posterior predictive distribution; circles mark days whose weight under the t likelihood, (ν + 1)/(ν + η²/σ²), is below 1/2."}
+```{r fig10, echo = FALSE, fig.width = 12, fig.height = 4.4, out.width = "100%", fig.cap = "Figure 10. Observed consumption against the model's typical day or a typical 14-day period."}
 local({
   p <- S$fig9; low_w <- p$low_w
   episodes <- if (is.null(p$episodes)) data.frame() else p$episodes   # no episode flagged -> no shading
@@ -2374,7 +2362,7 @@ local({
 })
 ```
 
-**Unexplained periods (Q6):** Single unusual days appear about as often as chance predicts: `r v$n_flag` of `r v$n_eval` one-step-ahead predictive p-values fall below 0.01 or above 0.99, against `r v$n_exp` expected. The $t$ innovations give `r v$n_lowW` isolated extreme days less than half weight, but the absence blocks are not accounted for, due to being unusual as a group but normal compared to the days around it. Comparing each 14-day mean with its posterior predictive distribution flags `r v$n_ep` episodes (Figure 9), `r v$n_ep_lo` low (`r v$n_abs` during absence blocks, at `r v$abs_pct`% of a typical day) and `r v$n_ep_hi` high (`r v$hi_dates`).
+**Unexplained periods (Q6):** Single unusual days appear about as often as chance predicts: `r v$n_flag` of `r v$n_eval` predictive p-values fall below 0.01 or above 0.99, against `r v$n_exp` expected. The $t$ innovations give `r v$n_lowW` isolated extreme days less than half weight. Comparing each 14-day mean with its posterior predictive distribution flags `r v$n_ep` episodes (Figure 10), `r v$n_ep_lo` low (`r v$n_abs` during absence blocks, at `r v$abs_pct`% of a typical day) and `r v$n_ep_hi` high (`r v$hi_dates`).
 
 # 6. Sensitivity Analysis and Model Checking
 
@@ -2725,22 +2713,10 @@ knitr::kable(
   tab10, escape = FALSE, align = "lccccc", row.names = FALSE,
   caption = paste(
     "Table 10. Posterior means and 95% credible intervals for all 15 parameters under the reported priors",
-    "and four alternatives, changing one prior at a time (scales as in Table 9).",
-    sprintf("The change in WAIC elpd is relative to the reported fit, on the same %s days.", v6$n_ll),
-    if (v6$conv_ok) "Every fit meets the convergence targets of Section 4." else ""
+    "and four alternatives."
   )
 )
 
-
-# knitr::kable(
-#   S9$prior_tab, escape = FALSE, align = "lccccc", row.names = FALSE,
-#   caption = paste(
-#     "Table 10. Section 5 conclusions under the reported priors and four alternatives, changing one prior at a time.",
-#     "Posterior means and 95% credible intervals; kWh quantities refer to the typical day, as in Table 9.",
-#     sprintf("The change in WAIC elpd is relative to the reported fit, on the same %s days.", v6$n_ll),
-#     if (v6$conv_ok) "Every fit meets the convergence targets of Section 4." else ""
-#   )
-# )
 ```
 
 **Prior sensitivity.** We changed one prior at a time: coefficient prior SDs halved or doubled, and the prior mean of $\nu - 2$ moved from 10 to 3 or 30. The estimates and credible intervals didn't change much (Table 10). No interval that excluded zero included zero after the priors were changed. The WAIC changes by 0.2 at most.
@@ -2749,29 +2725,50 @@ knitr::kable(
 knitr::kable(
   S9$bf_tab, escape = FALSE, align = "lccccc", row.names = FALSE,
   caption = paste(
-    "Table 11. Savage-Dickey Bayes factors, $\\log_{10} \\text{BF}_{10}$, for each term under the reported prior",
-    "and the four alternatives. Positive values favour including the term; $\\pm 1$ is strong and $\\pm 2$ decisive evidence.",
-    "For the AR orders, the posterior of the extra coefficients is approximated by a normal distribution."
+    "Table 11. Savage-Dickey Bayes factors, $\\log_{10} \\text{BF}_{10}$.")
+)
+```
+
+```{r table12, echo = FALSE}
+mods <- c(main = "Reported: AR(1), two harmonics, sqrt kWh", J1 = "One harmonic (J = 1)",
+          ar2 = "AR(2) errors", ar4 = "AR(4) errors", kwh = "Raw kWh scale")
+waic_val <- sapply(names(mods), function(n) -2 * sum(load_fit(n)$waic$elpd_i))
+# WAIC difference (alternative minus reported) = -2 x elpd difference; its SE doubles
+d_waic <- list(J1  = S$waic$J2_vs_J1   * c( 2, 2),
+               ar2 = S$waic$ar2_vs_ar1 * c(-2, 2),
+               ar4 = S$waic$ar4_vs_ar1 * c(-2, 2),
+               kwh = S$waic$sqrt_vs_kwh * c( 2, 2))
+pm_se <- function(x) sprintf("%s (%s)", fmt_n(x[["diff"]]), fmt_n(x[["se"]]))
+
+tab_waic <- data.frame(
+  Model = unname(mods),
+  WAIC  = fmt_n(waic_val),
+  `Difference from reported (SE)` = c("0 (reference)", sapply(d_waic, pm_se)),
+  check.names = FALSE
+)
+knitr::kable(
+  tab_waic, align = "lrr", row.names = FALSE,
+  caption = paste(
+    sprintf("Table 12. WAIC values.", v6$n_ll)
   )
 )
 ```
-**Bayes factors.** The Bayes factors in Section 5 are Savage–Dickey ratios, prior over posterior density at zero (Dickey, 1971; Verdinelli & Wasserman, 1995). Unlike posteriors, they depend on prior width: doubling an SD lowers $\log_{10}\text{BF}_{10}$ by about 0.3 per coefficient. Looking at the Bayes factors, we have negative values for the linear trend and positive values for the second harmonic. Therefore, the linear trend component isn't needed but the second harmonic adds useful information to the model. These conclusions are consistent across all the prior specifications (Table 11). 
+Bayes factors look at the fit of the model, and WAIC looks at whether they improve prediction. We use both to asses  the harmonics and AR structure (Gelman et al., 2014).
 
-#! Bayes factors table: Claude says there is an issue here !!! (check last chat from last night- 11/14)
+**Bayes factors.** The Bayes factors in Table 11 are Savage–Dickey ratios, prior over posterior density at zero (Dickey, 1971; Verdinelli & Wasserman, 1995). Unlike posteriors, they depend on prior width: doubling an SD lowers $\log_{10}\text{BF}_{10}$ by about 0.3 per coefficient. Looking at the Bayes factors, we have negative values for the linear trend and positive values for the second harmonic. Therefore, the linear trend component isn't needed but the second harmonic adds useful information to the model. Additionally, AR(4) fit the data better since the Bayes factor is positive and large (Kass & Raftery, 1995; Table 11). These conclusions are consistent across all the prior specifications (Table 11). Based on the WAIC values, AR(4) improves prediction compared to AR(1) (Table 12). Refitting with AR(4) moves no kWh conclusion by more than `r v6$shift4` posterior SDs, and the held-out log score changes by `r v6$ar4_lpd` (SE `r v6$ar4_lpd_se`), `r v6$ar_end`
 
-**Modelling assumptions.** On the same `r v6$n_ll` likelihood terms, dropping the second harmonic lowers WAIC's elpd by `r v6$J` (SE `r v6$J_se`) and using raw kWh lowers it by `r v6$kwh` (SE `r v6$kwh_se`). AR(2) and AR(4) errors raise it by `r v6$ar2` (SE `r v6$ar2_se`) and `r v6$ar4` (SE `r v6$ar4_se`), but their held-out log score per forecast changes by `r v6$ar2_lpd` (SE `r v6$ar2_lpd_se`) and `r v6$ar4_lpd` (SE `r v6$ar4_lpd_se`) relative to AR(1): both forecast worse, so we keep AR(1). A Bayes factor here would mostly reflect our convenience prior on the extra AR coefficients.
+**Modelling assumptions.** Previously we assumed AR(1) errors, but based on the Bayes factors and WAIC values, using AR(4) seems more plausible. We also assumed J=2, which was confirmed by Table 11.
 
-```{r table12, echo = FALSE}
+```{r table13, echo = FALSE}
 knitr::kable(
   S9$ppc_tab, escape = FALSE, align = "lccc", row.names = FALSE,
   caption = paste(
-    sprintf("Table 12. Posterior predictive checks: each statistic on the observed series and on %s series", v6$n_rep),
-    "simulated from the posterior, with missing days removed from both. Probabilities near 0 or 1 indicate misfit."
+    sprintf("Table 13. Posterior predictive checks.")
   )
 )
 ```
 
-```{r fig11, echo = FALSE, fig.width = 12, fig.height = 6.5, out.width = "100%", fig.cap = sprintf("Figure 10. Posterior predictive checks. Histograms show each statistic over %s series simulated from the posterior (central 99%% shown); red lines mark the observed series.", v6$n_rep)}
+```{r fig11, echo = FALSE, fig.width = 12, fig.height = 6.5, out.width = "100%", fig.cap = sprintf("Figure 11. Posterior predictive check histograms. Red lines mark the observed series.")}
 local({
   p <- S9$fig11
   par(mfrow = c(2, 3), mar = c(4.2, 4, 3, 1))
@@ -2788,7 +2785,7 @@ local({
   }
 })
 ```
-**Posterior predictive checks.** Looking at the posterior predictive checks, all of our observed values fall in the 95% posterior predictive interval around the replicated median, except for the longest run of days below 12 kWh. This suggests that our model is specified well besides the absence blocks, which is a limit to our model.
+**Posterior predictive checks.** Looking at the posterior predictive checks (Figure 11, Table 13), all of our observed values fall in the 95% posterior predictive interval around the replicated median, except for the longest run of days below 12 kWh. This suggests that our model is specified well besides the absence blocks, which is a limit to our model.
 
 # 7. Alternative Analysis, Comparison, and Bayesian Justification
 
@@ -3099,84 +3096,93 @@ v7 <- list(
 )
 ```
 
-**Frequentist analysis.** The natural alternative is the same final model fitted by maximum likelihood: holding the model fixed isolates what the priors and posterior averaging change. It uses the same conditional likelihood (missing days left out), giving `r v7$n_terms` terms. Standard errors come from the observed information; intervals for the nonlinear typical-day quantities simulate the estimator's asymptotic normal distribution (Krinsky & Robb, 1986). Forecasts plug in the training-period estimates and use the same `r v7$n_orig` rolling origins as Section 5.
-
-**Estimates and uncertainty.** Every typical-day estimate is within `r v7$max_diff` kWh of its posterior mean, and the interval widths differ by less than `r v7$max_w`% (Table 14, Figure 11a). With this much data the priors carry almost no weight. The biggest gap is in the tail weight, $\hat\nu =$ `r v7$nu_f` against a posterior mean of `r v7$nu_b`, because the posterior of $\nu$ is right-skewed and its prior mean is 12.
-
-**Interpretation.** The conclusions match. For the trend, the frequentist test cannot reject zero ($p =$ `r v7$p2`), while the Bayesian analysis gives a probability of decline of `r v7$p_dec`. That matches one minus the one-sided $p$-value (`r v7$one_minus_p1`), as expected with weak priors, but only the Bayesian number is a probability about this household's trend. Both keep the second harmonic: the likelihood-ratio test gives $\chi^2_2 =$ `r v7$lrt` (`r v7$lrt_p`), and AIC improves by `r v7$aic`, close to the WAIC gain of `r v7$waic` on the deviance scale (`r v7$waic_dev`).
-
-**Predictions.** Plug-in intervals treat the estimates as known, so they are `r v7$narrow1`% narrower one day ahead and `r v7$narrow3`% narrower from day three on (Figure 11b). Their 95% coverage is `r v7$c95_f`%, against `r v7$c95_b`% for the Bayesian intervals (Figure 11c), and the 12-month forecasts miss by `r v7$mae_f` and `r v7$mae_b` kWh per day on average (frequentist and Bayesian). Drawing the parameters from the estimator's sampling distribution closes about `r v7$gap_closed`% of the width gap, so parameter uncertainty is a small part of forecast uncertainty.
-
-**Why Bayesian?** For this household, the Bayesian analysis adds little to the estimates or the forecasts: four years of daily data give both methods the same answers. Its advantages are interpretation and bookkeeping. Every kWh summary, including peak dates and the 14-day anomaly check, comes straight from posterior draws, with no delta method. Parameter uncertainty reaches the forecasts without a separate simulation step, and "is use declining?" gets a direct probability. The cost is minutes of MCMC per model, against seconds of optimization. For a newly metered home with a few weeks of data, the priors and full predictive distribution would matter much more.
 
 ```{r table14, echo = FALSE}
+ci_txt <- function(m, lo, hi, dp) sprintf("%s [%s, %s]", fmt_n(m, dp), fmt_n(lo, dp), fmt_n(hi, dp))
+z95 <- qnorm(0.975)
+
+# ---- parameters: Bayesian posterior mean [95% CrI] vs MLE [95% Wald CI] ----
+pm <- param_mats(fm)                                   # 12 betas, sigma, phi_1, nu
+bayes_par <- sapply(pm, function(m) {
+  x <- as.vector(m); q <- quantile(x, c(0.025, 0.975)); ci_txt(mean(x), q[1], q[2], 3)
+})
+th <- F7$fit$theta; se <- F7$fit$se
+freq_par <- c(sapply(fm$names, function(k) ci_txt(th[[k]], th[[k]] - z95 * se[[k]], th[[k]] + z95 * se[[k]], 3)),
+              sapply(list(sigma = F7$est$sigma, phi_1 = F7$est$phi, nu = F7$est$nu),
+                     function(s) ci_txt(s[1], s[2], s[3], 3)))[names(pm)]
+
+# ---- conclusions ----
+pb <- S$post
+bayes_con <- c(ci_txt(pb$slope_kwh[1], pb$slope_kwh[2], pb$slope_kwh[3], 2),
+               sprintf("$P(\\text{decline} \\mid \\text{data}) = %.2f$", pb$p_decline),
+               ci_txt(pb$annual[1], pb$annual[2], pb$annual[3], 1),
+               ci_txt(pb$wkend[1],  pb$wkend[2],  pb$wkend[3],  1),
+               sprintf("$\\log_{10}$BF = %s; WAIC lower by %s (SE %s)", fmt_n(bf_h2, 2),
+                       fmt_n(2 * S$waic$J2_vs_J1[["diff"]]), fmt_n(2 * S$waic$J2_vs_J1[["se"]])))
+  
+freq_con  <- c(ci_txt(F7$est$slope_kwh[1], F7$est$slope_kwh[2], F7$est$slope_kwh[3], 2),
+               sprintf("$p$ = %s two-sided, %s one-sided (decline)", v7$p2,
+                       sprintf("%.2f", F7$trend_test[["p_one_sided"]])),
+               ci_txt(F7$est$annual[1], F7$est$annual[2], F7$est$annual[3], 1),
+               ci_txt(F7$est$wkend[1],  F7$est$wkend[2],  F7$est$wkend[3],  1),
+               sprintf("LRT $\\chi^2_2$ = %s, %s; AIC lower by %s", v7$lrt, v7$lrt_p, v7$aic))
+
+
+tab14 <- data.frame(
+  Quantity = c(ifelse(names(pm) %in% names(lab), lab[names(pm)], names(pm)),
+               "Change in annual mean (kWh/day per year)",
+               "Evidence about the trend",
+               "Typical-day consumption, annual mean (kWh/day)",
+               "Weekend minus weekday (kWh/day)",
+               "Second harmonic: model comparison"),
+  `Bayesian: posterior mean [95% CrI]` = c(bayes_par, bayes_con),
+  `Frequentist: MLE [95% CI]`          = c(freq_par, freq_con),
+  check.names = FALSE
+)
+
 knitr::kable(
-  F7$table, escape = FALSE, align = "lll", row.names = FALSE,
+  tab14, escape = FALSE, align = "lll", row.names = FALSE,
   caption = paste(
-    "Table 14. The final model fitted both ways, with the same conditional likelihood (missing days left out).",
-    "kWh quantities refer to the typical day, as in Table 9;",
-    "frequentist intervals for them simulate the asymptotic normal distribution of the MLE.",
-    sprintf("Forecast rows use fits through %s.", format(S$fc$train_end, "%d %B %Y"))
+    "Table 14. The final model fitted both ways."
   )
 )
 ```
 
-```{r fig10, echo = FALSE, fig.width = 12, fig.height = 4.2, out.width = "100%", fig.cap = sprintf("Figure 11. The final model fitted by Bayesian and frequentist methods. (a) Typical-day quantities with 95%% credible and confidence intervals; (b) mean width of the 95%% predictive interval by horizon over %d rolling origins, including a plug-in forecast that also draws the parameters from the estimator's asymptotic distribution; (c) empirical coverage of the 95%% (filled) and 50%% (open) intervals by horizon band.", F7$holdout$plugin$n_origins)}
+```{r fig12, echo = FALSE, fig.width = 12, fig.height = 4.2, out.width = "100%", fig.cap = sprintf("Figure 12. Mean width of the 95% predictive interval by horizon over %d rolling origins.")}
+
 local({
-  bp <- S$post; bfc <- S$fc; est <- F7$est
-  hp <- F7$holdout$plugin; he <- F7$holdout$est_err
-  keys <- c("annual", "peak_kwh", "trough_kwh", "swing", "wkend", "add2")
-  labs <- c("Annual mean", "Winter peak", "Summer trough", "Peak-to-trough swing",
-            "Weekend premium", "Second-harmonic effect")
-  layout(matrix(1:3, nrow = 1), widths = c(1.35, 1, 1))
-  par(mar = c(4.5, 10.5, 2.5, 1))
-  yy <- rev(seq_along(keys))
-  bb <- t(sapply(keys, function(q) bp[[q]]))
-  ff <- t(sapply(keys, function(q) est[[q]]))
-  plot(NA, xlim = range(c(bb, ff)), ylim = c(0.5, length(keys) + 0.5), yaxt = "n", ylab = "",
-       xlab = "kWh/day", main = "(a) Estimates with 95% intervals", las = 1)
-  axis(2, at = yy, labels = labs, las = 1, cex.axis = 0.9)
-  segments(bb[, 2], yy + 0.12, bb[, 3], yy + 0.12, col = NAV, lwd = 2)
-  points(bb[, 1], yy + 0.12, pch = 16, col = NAV)
-  segments(ff[, 2], yy - 0.12, ff[, 3], yy - 0.12, col = RED, lwd = 2)
-  points(ff[, 1], yy - 0.12, pch = 17, col = RED)
-  legend("bottomright", legend = c("Bayesian (posterior mean, CrI)", "Frequentist (MLE, CI)"),
-         col = c(NAV, RED), pch = c(16, 17), lwd = 2, bty = "n", cex = 0.85)
-  par(mar = c(4.5, 4.5, 2.5, 1))
+  bfc <- S$fc; hp <- F7$holdout$plugin; he <- F7$holdout$est_err
+  par(mar = c(4.5, 4.5, 1, 1))
   plot(bfc$byh$h, bfc$byh$w95, type = "l", lwd = 2, col = NAV,
        ylim = c(0, 1.1 * max(bfc$byh$w95, hp$byh$w95, he$byh$w95)),
-       xlab = "forecast horizon (days ahead)", ylab = "mean width of 95% interval (kWh)",
-       main = "(b) Predictive uncertainty by horizon", las = 1)
+       xlab = "forecast horizon (days ahead)", ylab = "mean width of 95% interval (kWh)", las = 1)
   lines(hp$byh$h, hp$byh$w95, lwd = 2, col = RED, lty = 2)
   lines(he$byh$h, he$byh$w95, lwd = 1.5, col = GREEN, lty = 3)
   legend("bottomright", legend = c("Bayesian predictive", "frequentist plug-in", "plug-in + estimation error"),
          col = c(NAV, RED, GREEN), lty = c(1, 2, 3), lwd = 2, bty = "n", cex = 0.85)
-  bins <- cut(bfc$byh$h, c(0, 1, 7, 14, 30, 60), labels = c("1", "2-7", "8-14", "15-30", "31-60"))
-  cov_bin <- function(b, key) 100 * tapply(b[[key]], bins, mean)
-  xb <- seq_along(levels(bins))
-  plot(NA, xlim = c(0.5, length(xb) + 0.5), ylim = c(35, 100), xaxt = "n", las = 1,
-       xlab = "forecast horizon (days ahead)", ylab = "empirical coverage (%)",
-       main = "(c) Calibration by horizon")
-  axis(1, at = xb, labels = levels(bins))
-  abline(h = c(95, 50), lty = 3)
-  points(xb - 0.1, cov_bin(bfc$byh, "c95"), pch = 16, col = NAV)
-  points(xb + 0.1, cov_bin(hp$byh, "c95"), pch = 17, col = RED)
-  points(xb - 0.1, cov_bin(bfc$byh, "c50"), pch = 1, col = NAV)
-  points(xb + 0.1, cov_bin(hp$byh, "c50"), pch = 2, col = RED)
-  text(length(xb) + 0.45, c(95, 50), c("95%", "50%"), pos = 3, cex = 0.8)
-  legend("right", legend = c("Bayesian predictive", "frequentist plug-in", "filled: 95% interval",
-                             "open: 50% interval"),
-         col = c(NAV, RED, "grey30", "grey30"), pch = c(16, 17, 16, 1), bty = "n", cex = 0.85)
 })
 ```
 
-# 8. Innovation or Extension: Student-$t$ innovations
+**Frequentist analysis.** We use the same model (a regression with a time trend, two seasonal harmonics, day-of-week effects, AR(1) errors, and t-innovations) but with maximum likelihood estimation (MLE) instead of Bayesian estimation. See Appendix E.
+ 
+We take Wald intervals for individual parameters and simulate data (from the approximate sampling distribution of the MLE; Krinsky & Robb, 1986) to get confidence intervals for other quantities of interest. We use a likelihood ratio test and compare AIC to see whether the second harmonic improves the model under a frequentist analysis.
 
-We had two main innovations in our model/sampling. First, a standard Bayesian regression assumes normal errors, but our residuals have heavier tails (Figure 3c). Instead of having innovations/shocks follow a normal distribution, they follow a t-distribution. This allows our model to accommodate more extreme days without affecting our other estimates. Second, we don't use a conventional random-walk sampler, and instead use a multivariate normal random-walk sampler. We approximate the posterior covariance matrix and use it to more efficiently propose values. For example, if two coefficients were highly correlated, a conventional sampler might try to hold one constant and increase the other between proposals. With a multivariate normal sampler, we can account for their relationship and move those variables together more often, producing more plausible proposals.
+**Estimates and conclusions:** The two analyses agree closely (Table 14). Coefficient estimates and their intervals don't change much, and every typical-day kWh summary is within `r v7$max_diff` kWh of its posterior mean, with interval widths differing by less than `r v7$max_w%`. Since we have a large dataset, the priors don't have a large effect on the posterior. 
+
+The largest gap is in the tail weight, $\hat\nu =$ `r v7$nu_f` against a posterior mean of `r v7$nu_b`, because the posterior of $\nu$ is right-skewed and its prior mean is 12. The conclusions also match. For the trend, both intervals contain zero. The frequentist test cannot reject zero ($p =$ `r v7$p2`) while the Bayesian analysis gives a probability of decline of `r v7$p_dec`, close to one minus the one-sided $p$-value (`r v7$one_minus_p1`), as expected with weak priors. However, only the Bayesian number is a probability about this household’s trend. Both support the second harmonic: the likelihood-ratio test gives $\chi^2_2 =$ `r v7$lrt (r v7$lrt_p)`, and AIC improves by `r v7$aic`, almost exactly the WAIC improvement of `r v7$waic_dev`.
+
+**Predictions.** The Bayesian intervals and frequentist plug-in intervals are similar in mean interval width, but the Bayesian intervals are slightly wider due to treating the parameters as unknown. After accounting for estimation error in the frequentist plug-in intervals, the mean interval width between the two types are even more similar (Figure 12). This shows that the Bayesian intervals are wider than the frequentist plug-in predictive intervals due to parameter uncertainty, so parameter uncertainty is a small part of forecast uncertainty.
+
+**Why Bayesian?** The estimates and intervals from the Bayesian and frequentist analyses are extremely similar, which is what we'd expect when priors are weakly informative and the data contains substantial information about the parameters of interest. This suggests that the main advantages of using a Bayesian analysis are that it gives a full posterior distribution, which allows us to better calculate probabilities for certain quantities (the frequentist intervals rely on a normal approximation while the posterior doesn’t), and that if we were to repeat the analysis with a limited dataset, we could utilize the estimates we obtained to make informative priors. Currently, the practical advantage of the Bayesian model is modest.
+
+# 8. Innovation or Extension
+
+We had two main innovations in our model/sampling. First, a standard Bayesian regression assumes normal errors, but our residuals have heavier tails (Figure 3c). Instead of having innovations/shocks follow a normal distribution, they follow a t-distribution. This allows our model to accommodate more extreme days without affecting our other estimates. We aimed to capture the absence blocks and extreme days with the t-innovation but learned that the t-innovation only takes care of the extreme days.
+
+Second, we don't use a conventional random-walk sampler, and instead use a multivariate normal random-walk sampler. We approximate the posterior covariance matrix and use it to more efficiently propose values. For example, if two coefficients were highly correlated, a conventional sampler might try to hold one constant and increase the other between proposals. With a multivariate normal sampler, we can account for their relationship and move those variables together more often, producing more plausible proposals.
 
 # AI Use Statement
-
-We used Claude (Anthropic) in the Cursor editor to restructure and paraphrase the report to meet the word limit, and to help debug R code. The analysis choices are ours; every number is computed by this .Rmd from our code, and we checked all AI edits against our results.
+We used Claude (Aysegul), ChatGPT (Chris), and Claude Cursor editor (Aditya) to write/debug R code, mathematical/statistical assistance with unfamiliar concepts. We verified the AI-generated information through lecture notes, group discussions, and office hours with the professor.
 
 # References
 
@@ -3188,21 +3194,19 @@ Bürkner, P.-C. (2017). brms: An R package for Bayesian multilevel models using 
 
 Dickey, J. M. (1971). The weighted likelihood ratio, linear hypotheses on normal location parameters. *The Annals of Mathematical Statistics*, 42(1), 204–223.
 
-Durbin, J., & Koopman, S. J. (2012). *Time series analysis by state space methods* (2nd ed.). Oxford University Press.
-
-EDF. (n.d.). Le Tarif Bleu en bref. Retrieved November 2026, from <https://www.edf.fr/collectivites/offres-electricite/tarifs-reglementes/tarif-bleu>
-
-Gelman, A., & Rubin, D. B. (1992). Inference from iterative simulation using multiple sequences. *Statistical Science*, 7(4), 457–472.
+EDF. (n.d.). Le Tarif Bleu en bref. Retrieved November 15, 2026, from <https://www.edf.fr/collectivites/offres-electricite/tarifs-reglementes/tarif-bleu>
 
 Gelman, A. (2006). Prior distributions for variance parameters in hierarchical models. *Bayesian Analysis*, 1(3), 515–534.
+
+Gelman, A., Hwang, J., & Vehtari, A. (2014). Understanding predictive information criteria for Bayesian models. *Statistics and Computing*, 24(6), 997–1016.
+
+Gelman, A., & Rubin, D. B. (1992). Inference from iterative simulation using multiple sequences. *Statistical Science*, 7(4), 457–472.
 
 GridLabs. (n.d.). Offres électricité à Sceaux : prix kWh & verte 2026. Retrieved November 9, 2026, from <https://www.gridlabs.fr/electricite/sceaux-92071>
 
 Hébrail, G., & Bérard, A. (2012). Individual household electric power consumption [Data set]. UCI Machine Learning Repository. <https://doi.org/10.24432/C58K54>
 
 Kass, R. E., & Raftery, A. E. (1995). Bayes factors. *Journal of the American Statistical Association*, 90(430), 773–795.
-
-Kim, T.-Y., & Cho, S.-B. (2019). Predicting residential energy consumption using CNN-LSTM neural networks. *Energy*, 182, 72–81. <https://doi.org/10.1016/j.energy.2019.05.230>
 
 Krinsky, I., & Robb, A. L. (1986). On approximating the statistical properties of elasticities. *The Review of Economics and Statistics*, 68(4), 715–719.
 
@@ -3212,12 +3216,38 @@ Vehtari, A., Gelman, A., Simpson, D., Carpenter, B., & Bürkner, P.-C. (2021). R
 
 Verdinelli, I., & Wasserman, L. (1995). Computing Bayes factors using a generalization of the Savage–Dickey density ratio. *Journal of the American Statistical Association*, 90(430), 614–618.
 
-Zaman, M., Saha, S., Zohrabi, N., & Abdelwahed, S. (2022). Uncertainty estimation in power consumption of a smart home using Bayesian LSTM networks. In *2022 IEEE 7th International Symposium on Advanced Control of Industrial Processes (AdCONIP)* (pp. 120–125).
-
 # Appendix A. Data preparation and exploratory details (supplementary)
 
-**Cleaning.** Missing readings are coded as `?`, and dates are written day first. Of the 2,075,259 minutes, 25,979 (1.25%) have no power reading. We dropped the first and last days because they are partial, and confirmed that every remaining day has 1,440 minute rows with no duplicate time stamps. For each day we computed coverage = observed minutes / 1,440 and kept days with coverage of at least 0.95 as observed. On those days each missing minute is filled with the day's average power, which is the same as scaling the day's total up to 1,440 minutes. Days under the threshold stay on the calendar as missing rather than being deleted. Without this rule, a day that lost several hundred minutes would look like a very low-use day and would show up as a false anomaly under Q6. In the end there are 1,417 observed days and 23 missing ones: 9 with no readings at all and 14 below 95% coverage. To rebuild `data/daily.csv`, download the UCI file into `data/` and run the `aggregate` chunk.
+**Cleaning.**
+Missing readings are coded as `?`, and dates are written day first. Of the 2,075,259 minutes, 25,979 (1.25%) have no power reading. We dropped the first and last days because they are partial, and confirmed that every remaining day has 1,440 minute rows with no duplicate time stamps. For each day we computed coverage = observed minutes / 1,440 and kept days with coverage of at least 95% as observed. On those days each missing minute is filled with the day's average power, which is the same as scaling the day's total up to 1,440 minutes. Days under the threshold stay on the calendar as missing rather than being deleted. Without this rule, a day that lost several hundred minutes would look like a very low-use day and would show up as a false anomaly under Q6. In the end there are 1,417 observed days and 23 missing ones: 9 with no readings at all and 14 below 95% coverage. To rebuild `data/daily.csv`, download the UCI file into `data/` and run the `aggregate` chunk.
 
-**Exploratory analysis in detail.** An exact Kalman-filter likelihood (Durbin & Koopman, 2012) would also use the links across the 8 gaps that the conditional likelihood drops; with about 1,400 days the difference is negligible. Ordinary least-squares residuals are strongly autocorrelated on every scale (Table 1), so we chose the response scale with a Box–Cox profile likelihood that allows AR(1) errors (Box & Cox, 1964). The profile likelihood peaks at $\hat\lambda \approx 0.4$ with or without the absence-block days and is nearly flat between 0.3 and 0.5 (Figure 2), so we model the square root, $z_t = \sqrt{Y_t}$ (in $\sqrt{\text{kWh}}$). It gives nearly symmetric innovations (skew −0.07) and the lowest kurtosis (4.10), while the log over-corrects (skew −0.44; Table 2). Kurtosis stays above 3 on every scale, so normal errors would have tails that are too thin. We split each day's error into a part carried over from earlier days and a new shock (the innovation), and give the innovation a $t$ distribution whose degrees of freedom $\nu$ are estimated from the data. On the square-root scale the residuals stay centred on zero (Figure 3a), show no clear funnel against the fitted values (Figure 3b), and have heavy tails at both ends (Figure 3c), which is what the $t$ innovations are for. Inside the absence blocks, though, they stay negative for many days in a row, while elsewhere there are no long same-sign runs. Neither AR(1) errors nor $t$ innovations are built for a shift that lasts weeks, so we return to the blocks in Sections 5 and 6. The missing days do not cluster around the absence blocks: 1 of the 81 days in or within three days of a block is missing (1.2%), against 1.6% elsewhere (Table 3). Nine of the 23 have no readings at all, which points to recording failures rather than the meter being switched off before a trip. We therefore treat them as missing at random (MAR), which lets us leave them out of the likelihood (Section 2.2). MAR cannot be checked from the observed data, so it remains an assumption. After removing the trend, season and weekday effects, the residuals are still correlated: the lag-1 autocorrelation is 0.47, and it decays more slowly than AR(1) errors would imply (Figure 4, Table 4). The absence blocks explain part of this. They are 4.0% of observed days but 19.1% of the residual sum of squares, and removing them lowers the lag-1 autocorrelation to 0.35. The partial autocorrelations (Figure 4b) show a few days of extra memory, not a weekly cycle: lags 2–4 exceed the $\pm 0.05$ bounds, and later lags are small apart from an isolated negative value at lag 8. BIC prefers AR(4) errors with or without the blocks (Table 5), but the gap to AR(1) halves once the blocks are removed (31 versus 67), so part of the extra memory comes from a few long, unusual episodes, and BIC here assumes normal errors. We therefore use AR(1) errors as the simplest form of day-to-day carry-over and compare AR(2) and AR(4) with WAIC and held-out forecasts in Section 6.
+# Appendix B.
+**Section 2.1:** 
+There's no obvious long-term drift, but we can see seasonality and day-of-week effects (Figure 1). A Box–Cox likelihood (Box & Cox, 1964) with AR(1) errors peaks near $\lambda = 0.4$, which suggests a square-root transformation due to being close to $\lambda = 0.5$ (Figure 2). With the transformation, heteroskedasticity is not a major concern, and we have a heavy-tailed but symmetrical distribution (Figure 3). The 23 missing days don't cluster near the absence blocks (Table 3) and are not correlated with high/low consumption (Figure 1), so we treat them as missing at random (MAR) and drop them from our analysis. After removing trend, seasonality, and day-of-week effects, the square-root residuals remain autocorrelated (lag-1 autocorrelation 0.47, falling to 0.35 without the absence blocks, which are 4.0% of days but 19.1% of the residual sum of squares), with memory lasting a few days rather than following a weekly cycle (Figure 4, Table 4). BIC favors AR(4) errors (Table 5), but its advantage halves without the blocks and assumes normal errors, whereas our heavy-tailed innovations can absorb these episodes, so we use AR(1) errors as the simplest form of carry-over and compare AR(2) and AR(4) in Section 6. 
 
-**Residual details.** The smoothed residuals in Figure 3a still show small seasonal wiggles, so two harmonics do not capture the annual shape perfectly. Three of the four absence blocks fall in summer. In Figure 3b the smoothed curve bends down slightly at both ends, where there are few points; at the low end this is largely a floor effect from absence days rather than a misfit of the mean. Figure 4c uses OLS residuals, which still include the carried-over part of each day's error, so their monthly spread is larger than that of the AR(1) innovations in Table 2. Residual spread is highest in February and lowest in September; August is high only because of the absence blocks.
+# Appendix C.
+First, the intercept $\beta_0$ has a normal prior, which is continuous, symmetric, and allows any real value. Its standard deviation of 20 $\sqrt{\text{kWh}}$ places 95% of the prior within ±40 $\sqrt{\text{kWh}}$ (up to 40² = 1,600 kWh/day), far above the current average for a Sceaux household (about 9.6 kWh per day; GridLabs, n.d.), this household’s highest observed day (about 80 kWh), and even the physical maximum of a residential connection (864 kWh/day; EDF, n.d.), so the prior does not constrain the intercept. Our mean is 0 not because we believe the baseline level is zero, but because with that standard deviation, it is nonrestrictive (Figure 5a).  
+
+Second, our other regression coefficients $\beta_1, a_j, b_j, \delta_k$ have normal priors centered at 0 . Their SD of 5 $\sqrt{\text{kWh}}$ is about twice the largest contrast in the data (Figure 5a). The trend prior $\beta_1 \sim N(0, 5^2)$ allows high yearly changes, so it is weak about the size of any trend. Because of its normal distribution, this width makes it lean toward “no trend.”
+
+Third, the innovation scale $\sigma$ has a half-$t$ prior with 3 degrees of freedom and scale 2 $\sqrt{\text{kWh}}$ (Gelman, 2006), which keeps $\sigma$ positive (due to it being a scale parameter, we need this restriction), and allows scales well above the SD of daily $\sqrt{\text{kWh}}$, 1.01 (Figure 5b). 
+
+Fourth, the autoregressive coefficients have a uniform prior on the stationary region: $(-1, 1)$ for AR(1), and the corresponding stationary region for the higher-order models compared in Section 6. Within that region every value is equally likely, and shocks fade over time, so long-horizon forecasts stay bounded (Figure 5c).
+
+Fifth, an exponential prior with mean 10 on $\nu - 2$ keeps $\nu$ above 2, so the innovation variance is finite. It puts substantial weight on small values (heavy tails) and less on very large ones (nearly Gaussian tails), so the data decide how heavy the tails are (Figure 5d).
+
+# Appendix D.
+We first obtain initial parameter estimates using BFGS optimization, a numerical optimization algorithm that iteratively minimizes the negative log posterior to locate its mode, so we're finding the most likely parameter estimates under the posterior distribution. 
+
+All $d = 15$ parameters are proposed together on the scale $\theta = (\beta, \log\sigma, \phi, \log(\nu-2))$- we log transform $\sigma$ and $\nu-2$ to keep the proposed values positive (for the same reasons we detailed in the priors), and to account for the variable transformations we add Jacobian terms to the log posterior.
+
+Then, instead of doing a basic random-walk proposal, we construct a multivariate normal random-walk proposal that accounts for differences in parameter uncertainty and correlations between parameters. We do this by calculating the Hessian of the negative log posterior at this mode and use its inverse to approximate the posterior covariance matrix. This works because the Hessian describes the curvature of the posterior, and a multivariate normal distribution has curvature equal to its inverse covariance matrix. 
+
+At each iteration, a new vector containing all model parameters is proposed and accepted or rejected based on its joint posterior density (and proposals with $|\phi| \ge 1$ are rejected outright). The proposal scale is tuned during burn-in toward an acceptance rate of approximately 23.4% (the optimum for a joint update of this many parameters according to Roberts et al. (1997)) and then held fixed. 
+
+Four chains of 40,000 iterations started from overdispersed values (twice the Laplace SD from the mode). We dropped the first 10,000 as burn-in and kept every fifth draw, leaving 24,000 draws. After tuning, 23% of proposals were accepted as suggested for a joint update of 15 parameters (Table 8). The worst rank-normalized split-$\hat{R}$ (Gelman & Rubin, 1992; Vehtari et al., 2021) is 1.002, and the smallest bulk or tail effective sample size is `r round(min(S$conv$worst[c("ess", "ess_tail")]))`, against targets of 1.01 and 400, so the ESS is well below the number of draws as expected for random-walk proposals but far above what is needed. We use the stricter threshold of 1.01 recommended by Vehtari et al. (2021) rather than the traditional 1.1, but our worst $\hat{R}$ satisfies both. Further, Monte Carlo standard error is at most about `r sprintf("%.0f", 100 * S$conv$mcse_max_frac)`% of a posterior SD, which is small enough that rerunning the sampler would not change any reported digit. The four chains overlap from the start of burn-in and their densities agree (Figure 6), and autocorrelations fall to near zero within about 15–20 kept draws (Figure 7). All these convergence diagnostics show that there are no convergence issues.
+
+Two more checks support the sampler. On a series simulated with known parameters and the same 23 missing days, the 95% intervals covered `r sum(res_val$Covered)` of `r nrow(res_val)` true values (Table 7), as expected; the miss was `r paste(res_val$Parameter[!res_val$Covered], collapse = ", ")`. Refitting with brms (Bürkner, 2017), which uses Stan's No-U-Turn sampler, puts every posterior mean within `r vb$gap` posterior SDs of ours (worst $\hat{R}$ `r vb$rhat`, `r vb$div` divergent transitions).
+
+# Appendix E.
+Similar to how we constructed our sampler, we use the BFGS optimization algorithm to minimize the negative log-likelihood to find our MLE estimates, and we use the Hessian matrix to estimate their standard errors (as it's measuring uncertainty around those MLE estimates).
