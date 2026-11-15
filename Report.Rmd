@@ -821,7 +821,7 @@ First, the intercept $\beta_0$ has a normal prior, which is continuous, symmetri
 
 Second, our other regression coefficients $\beta_1, a_j, b_j, \delta_k$ also have normal priors centered at 0 for similar reasons: it is continuous, symmetric, lets the data choose the direction of each effect, and makes extremely large effects less plausible. Their standard deviation of 5 √kWh is about twice the largest contrast in the data (Figure 5a). The trend prior $\beta_1 \sim N(0, 5^2)$ allows yearly changes of up to about ±100 kWh/day (95%) for a typical 25 kWh/day, so it is weak about the size of any trend. Because of its normal distribution though, this width makes it lean toward “no trend.”
 
-Third, the innovation scale $\sigma$ has a half-$t$ prior with 3 degrees of freedom and scale 2 √kWh (Gelman, 2006), which keeps $\sigma$ positive, and allows scales well above the standard deviation of daily √kWh, 1.01 (Figure 5b). 
+Third, the innovation scale $\sigma$ has a half-$t$ prior with 3 degrees of freedom and scale 2 √kWh (Gelman, 2006), which keeps $\sigma$ positive (due to it being a scale parameter, we need this restriction), and allows scales well above the standard deviation of daily √kWh, 1.01 (Figure 5b). 
 
 Fourth, the autoregressive coefficients have a uniform prior on the stationary region: $(-1, 1)$ for AR(1), and the corresponding stationary region for the higher-order models compared in Section 5. Within that region every value is equally likely, and shocks fade over time, so long-horizon forecasts stay bounded (Figure 5c).
 
@@ -2178,7 +2178,17 @@ vb <- list(gap  = sprintf("%.2f", max(gap)),
            div  = sum(np$Value[np$Parameter == "divergent__"]))      # divergent transitions (want 0)
 ```
 
-The posterior has no closed form, so we sample it with a block random-walk Metropolis sampler we wrote for this model (the folded **Code** block above). All $d = 15$ parameters are proposed together on the scale $\theta = (\beta, \log\sigma, \phi, \log(\nu-2))$, with the Jacobian terms added to the log posterior, and proposals with $|\phi| \ge 1$ are rejected. Proposals are $\theta^* \sim N(\theta^{(k)}, s^2\Sigma)$, where $\Sigma$ is the inverse Hessian of the negative log posterior at its mode and $s$ starts at $2.38/\sqrt{d}$ and is tuned during burn-in. Afterwards `r sprintf("%.0f", 100 * S$conv$acc)`% of proposals are accepted (Table 8), near the optimum of about 23% for a joint update of this many parameters (Roberts, Gelman & Gilks, 1997).
+The posterior has no closed-form solution, so we approximate it using a block random-walk Metropolis sampler developed for this model (see the folded Code block above). 
+
+We first obtain initial parameter estimates using BFGS optimization, a numerical optimization algorithm that iteratively minimizes the negative log posterior to locate its mode, so we're finding the most likely parameter estimates under the posterior distribution. 
+
+All $d = 15$ parameters are proposed together on the scale $\theta = (\beta, \log\sigma, \phi, \log(\nu-2))$- we log transform $\sigma$ and $\nu-2$ to keep the proposed values positive (for the same reasons we detailed in the priors), and to account for the variable transformations we add Jacobian terms to the log posterior.
+
+Then, instead of doing a basic random-walk proposal, we construct a multivariate normal random-walk proposal that accounts for differences in parameter uncertainty and correlations between parameters. We do this by calculating the Hessian of the negative log posterior at this mode and use its inverse to approximate the posterior covariance matrix. This works because the Hessian describes the curvature of the posterior, and a multivariate normal distribution has curvature equal to its inverse covariance matrix. 
+
+At each iteration, a new vector containing all model parameters is proposed and accepted or rejected based on its joint posterior density (and proposals with $|\phi| \ge 1$ are rejected outright). The proposal scale is tuned during burn-in toward an acceptance rate of approximately 23.4% (the optimum for a joint update of this many parameters according to (Roberts, Gelman & Gilks, 1997)) and then held fixed. 
+
+The smallest bulk ESS is r round(S$conv$worst[["ess"]]), so the Monte Carlo standard error of every posterior mean is at most r sprintf("%.0f%%", 100 * S$conv$mcse_max_frac) of its posterior SD.
 
 Four chains of 40,000 iterations started from overdispersed values (twice the Laplace SD from the mode); we dropped the first 10,000 as burn-in and kept every fifth draw, leaving 24,000. The worst rank-normalized split-$\hat{R}$ (Gelman & Rubin, 1992; Vehtari et al., 2021) is `r sprintf("%.3f", S$conv$worst[["rhat"]])`, and the smallest bulk or tail effective sample size is `r round(min(S$conv$worst[c("ess", "ess_tail")]))`, against targets of 1.01 and 400, so Monte Carlo error is at most about `r sprintf("%.0f", 100 * S$conv$mcse_max_frac)`% of a posterior SD. All chains leave their starting values within a few hundred iterations and then overlap (Figure 6).
 
